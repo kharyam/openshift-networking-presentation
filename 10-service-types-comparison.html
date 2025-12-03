@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Types Comparison - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Service type colors */
+            --color-clusterip: #A18FFF;
+            --color-clusterip-bg: rgba(161, 143, 255, 0.08);
+            --color-nodeport: #F0AB00;
+            --color-nodeport-bg: rgba(240, 171, 0, 0.08);
+            --color-loadbalancer: #3E8635;
+            --color-loadbalancer-bg: rgba(62, 134, 53, 0.08);
+            --color-headless: #EC7A08;
+            --color-headless-bg: rgba(236, 122, 8, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(62, 134, 53, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 14px 28px;
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            border: 2px solid var(--rh-gray-50);
+            background: var(--rh-gray-90);
+            color: var(--text-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .btn:hover {
+            border-color: var(--rh-red);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.3);
+        }
+        
+        .btn.active {
+            background: var(--rh-red);
+            border-color: var(--rh-red);
+        }
+        
+        /* Explanation box */
+        .explanation {
+            background: var(--rh-gray-90);
+            border: 2px solid var(--rh-gray-70);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+            min-height: 140px;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .explanation-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .explanation-title .icon {
+            font-size: 32px;
+        }
+        
+        .explanation-content {
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+        
+        .explanation-use-case {
+            margin-top: 12px;
+            padding: 12px;
+            background: var(--rh-gray-80);
+            border-left: 4px solid var(--rh-red);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .explanation-use-case strong {
+            color: var(--rh-red);
+        }
+        
+        /* Diagram container */
+        .diagram-container {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid var(--rh-gray-70);
+            min-height: 500px;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: visible;
+        }
+        
+        /* Service diagram */
+        .service-diagram {
+            display: none;
+            opacity: 0;
+            transform: scale(0.95);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .service-diagram.active {
+            display: grid;
+            opacity: 1;
+            transform: scale(1);
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+            justify-items: center;
+        }
+        
+        /* Center ClusterIP and Headless diagrams */
+        #diagram-clusterip.active,
+        #diagram-headless.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 180px;
+        }
+        
+        /* Component styling */
+        .component {
+            background: var(--rh-gray-80);
+            border: 3px solid var(--rh-gray-70);
+            border-radius: 12px;
+            padding: 24px 20px;
+            text-align: center;
+            min-width: 180px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .component:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        .component-icon {
+            font-size: 36px;
+            margin-bottom: 12px;
+        }
+        
+        .component-label {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .component-detail {
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            color: var(--rh-red);
+            line-height: 1.5;
+        }
+        
+        /* Type-specific colors */
+        .component.service {
+            border-color: var(--color-clusterip);
+        }
+        
+        .component.service::before {
+            background: var(--color-clusterip);
+        }
+        
+        .component.external {
+            border-color: var(--color-nodeport);
+        }
+        
+        .component.external::before {
+            background: var(--color-nodeport);
+        }
+        
+        .component.loadbalancer {
+            border-color: var(--color-loadbalancer);
+        }
+        
+        .component.loadbalancer::before {
+            background: var(--color-loadbalancer);
+        }
+        
+        .component.dns {
+            border-color: var(--color-headless);
+        }
+        
+        .component.dns::before {
+            background: var(--color-headless);
+        }
+        
+        .component.pod {
+            border-color: var(--rh-red);
+        }
+        
+        .component.pod::before {
+            background: var(--rh-red);
+        }
+        
+        .pods-group {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        /* Connection lines */
+        .connection-line {
+            stroke: var(--rh-red);
+            stroke-width: 4;
+            fill: none;
+            stroke-linecap: round;
+            stroke-dasharray: 10 5;
+            animation: dashFlow 2s linear infinite;
+        }
+        
+        .connection-line.dashed {
+            stroke-dasharray: 5 5;
+            opacity: 0.6;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -150;
+            }
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Service Types Comparison</h1>
+            <div class="subtitle">Four Ways to Expose Your Application</div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn active" data-type="clusterip">ClusterIP</button>
+            <button class="btn" data-type="nodeport">NodePort</button>
+            <button class="btn" data-type="loadbalancer">LoadBalancer</button>
+            <button class="btn" data-type="headless">Headless</button>
+        </div>
+        
+        <div class="explanation" id="explanation">
+            <!-- Explanation content will be dynamically updated -->
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- ClusterIP Diagram -->
+            <div class="service-diagram active" id="diagram-clusterip">
+                <div></div>
+                <div class="component service" data-component="clusterip-service">
+                    <div class="component-icon">⚖️</div>
+                    <div class="component-label">Service VIP</div>
+                    <div class="component-detail">172.30.45.100<br/>Internal only</div>
+                </div>
+                <div class="pods-group">
+                    <div class="component pod" data-component="clusterip-pod1">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 1</div>
+                        <div class="component-detail">10.128.1.5:8080</div>
+                    </div>
+                    <div class="component pod" data-component="clusterip-pod2">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 2</div>
+                        <div class="component-detail">10.128.2.10:8080</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- NodePort Diagram -->
+            <div class="service-diagram" id="diagram-nodeport">
+                <div class="component external" data-component="nodeport-external">
+                    <div class="component-icon">🌐</div>
+                    <div class="component-label">External Access</div>
+                    <div class="component-detail">any-node-ip:30080</div>
+                </div>
+                <div class="component service" data-component="nodeport-service">
+                    <div class="component-icon">⚖️</div>
+                    <div class="component-label">Service VIP</div>
+                    <div class="component-detail">172.30.45.101<br/>+ NodePort: 30080</div>
+                </div>
+                <div class="pods-group">
+                    <div class="component pod" data-component="nodeport-pod1">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 1</div>
+                        <div class="component-detail">10.128.1.5:8080</div>
+                    </div>
+                    <div class="component pod" data-component="nodeport-pod2">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 2</div>
+                        <div class="component-detail">10.128.2.10:8080</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- LoadBalancer Diagram -->
+            <div class="service-diagram" id="diagram-loadbalancer">
+                <div class="component loadbalancer" data-component="lb-external">
+                    <div class="component-icon">☁️</div>
+                    <div class="component-label">External LB</div>
+                    <div class="component-detail">203.0.113.10</div>
+                </div>
+                <div class="component service" data-component="lb-service">
+                    <div class="component-icon">⚖️</div>
+                    <div class="component-label">Service VIP</div>
+                    <div class="component-detail">172.30.45.102<br/>+ NodePort: 30081<br/>+ External IP</div>
+                </div>
+                <div class="pods-group">
+                    <div class="component pod" data-component="lb-pod1">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 1</div>
+                        <div class="component-detail">10.128.1.5:8080</div>
+                    </div>
+                    <div class="component pod" data-component="lb-pod2">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 2</div>
+                        <div class="component-detail">10.128.2.10:8080</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Headless Diagram -->
+            <div class="service-diagram" id="diagram-headless">
+                <div></div>
+                <div class="component dns" data-component="headless-dns">
+                    <div class="component-icon">🌐</div>
+                    <div class="component-label">DNS Query</div>
+                    <div class="component-detail">Returns Pod IPs<br/>directly (no VIP)</div>
+                </div>
+                <div class="pods-group">
+                    <div class="component pod" data-component="headless-pod1">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 1</div>
+                        <div class="component-detail">10.128.1.5:8080</div>
+                    </div>
+                    <div class="component pod" data-component="headless-pod2">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 2</div>
+                        <div class="component-detail">10.128.2.10:8080</div>
+                    </div>
+                    <div class="component pod" data-component="headless-pod3">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 3</div>
+                        <div class="component-detail">10.128.3.15:8080</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const explanations = {
+            clusterip: {
+                title: 'ClusterIP (Default)',
+                icon: '⚖️',
+                content: 'The default service type. Creates a stable virtual IP that is only accessible from within the cluster. Perfect for internal microservice communication where you need a consistent endpoint for load balancing.',
+                useCase: 'Use Case: Backend services, databases, internal APIs - anything that should only be accessed by other pods in the cluster.'
+            },
+            nodeport: {
+                title: 'NodePort',
+                icon: '🌐',
+                content: 'Extends ClusterIP by also opening a specific port (30000-32767) on every node in the cluster. External traffic can reach the service by connecting to any node IP on this port. The node then forwards traffic to the service.',
+                useCase: 'Use Case: Development/testing environments, on-premises clusters without a load balancer, quick external access during debugging.'
+            },
+            loadbalancer: {
+                title: 'LoadBalancer',
+                icon: '☁️',
+                content: 'Extends NodePort by provisioning an external cloud load balancer (AWS ELB, Azure LB, GCP LB) that distributes traffic across all nodes. This is the standard way to expose services to the internet in cloud environments.',
+                useCase: 'Use Case: Production applications on cloud platforms (AWS, Azure, GCP) that need internet-facing endpoints with high availability.'
+            },
+            headless: {
+                title: 'Headless (clusterIP: None)',
+                icon: '🔍',
+                content: 'No virtual IP is created. DNS queries for the service return the individual pod IPs directly, allowing clients to connect to specific pods. This gives applications full control over load balancing and connection management.',
+                useCase: 'Use Case: StatefulSets (databases, message queues), service discovery patterns, applications that need to connect to specific pod instances.'
+            }
+        };
+        
+        let currentType = 'clusterip';
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            setupControls();
+            showType('clusterip');
+        });
+        
+        function setupControls() {
+            document.querySelectorAll('.btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const type = this.dataset.type;
+                    
+                    // Update active button
+                    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Show diagram
+                    showType(type);
+                });
+            });
+        }
+        
+        function showType(type) {
+            currentType = type;
+            
+            // Update explanation
+            const exp = explanations[type];
+            const expEl = document.getElementById('explanation');
+            expEl.innerHTML = `
+                <div class="explanation-title">
+                    <span class="icon">${exp.icon}</span>
+                    <span>${exp.title}</span>
+                </div>
+                <div class="explanation-content">${exp.content}</div>
+                <div class="explanation-use-case"><strong>💡 ${exp.useCase}</strong></div>
+            `;
+            
+            // Hide all diagrams
+            document.querySelectorAll('.service-diagram').forEach(d => {
+                d.classList.remove('active');
+            });
+            
+            // Show selected diagram with delay for animation
+            setTimeout(() => {
+                document.getElementById(`diagram-${type}`).classList.add('active');
+                setTimeout(() => drawConnections(type), 100);
+            }, 100);
+        }
+        
+        function drawConnections(type) {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Clear existing connections
+            while (svg.childNodes.length > 1) {
+                svg.removeChild(svg.lastChild);
+            }
+            
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            function getComponentBox(selector) {
+                const element = document.querySelector(`[data-component="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY }
+                };
+            }
+            
+            function createConnection(from, to, dashed = false) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', from.x);
+                line.setAttribute('y1', from.y);
+                line.setAttribute('x2', to.x);
+                line.setAttribute('y2', to.y);
+                line.setAttribute('class', `connection-line ${dashed ? 'dashed' : ''}`);
+                line.setAttribute('marker-end', 'url(#arrowhead)');
+                svg.appendChild(line);
+            }
+            
+            // Draw connections based on type
+            if (type === 'clusterip') {
+                const service = getComponentBox('clusterip-service');
+                const pod1 = getComponentBox('clusterip-pod1');
+                const pod2 = getComponentBox('clusterip-pod2');
+                
+                if (service && pod1 && pod2) {
+                    createConnection(service.rightCenter, pod1.leftCenter);
+                    createConnection(service.rightCenter, pod2.leftCenter);
+                }
+            } else if (type === 'nodeport') {
+                const external = getComponentBox('nodeport-external');
+                const service = getComponentBox('nodeport-service');
+                const pod1 = getComponentBox('nodeport-pod1');
+                const pod2 = getComponentBox('nodeport-pod2');
+                
+                if (external && service && pod1 && pod2) {
+                    createConnection(external.rightCenter, service.leftCenter);
+                    createConnection(service.rightCenter, pod1.leftCenter);
+                    createConnection(service.rightCenter, pod2.leftCenter);
+                }
+            } else if (type === 'loadbalancer') {
+                const external = getComponentBox('lb-external');
+                const service = getComponentBox('lb-service');
+                const pod1 = getComponentBox('lb-pod1');
+                const pod2 = getComponentBox('lb-pod2');
+                
+                if (external && service && pod1 && pod2) {
+                    createConnection(external.rightCenter, service.leftCenter);
+                    createConnection(service.rightCenter, pod1.leftCenter);
+                    createConnection(service.rightCenter, pod2.leftCenter);
+                }
+            } else if (type === 'headless') {
+                const dns = getComponentBox('headless-dns');
+                const pod1 = getComponentBox('headless-pod1');
+                const pod2 = getComponentBox('headless-pod2');
+                const pod3 = getComponentBox('headless-pod3');
+                
+                if (dns && pod1 && pod2 && pod3) {
+                    createConnection(dns.rightCenter, pod1.leftCenter, true);
+                    createConnection(dns.rightCenter, pod2.leftCenter, true);
+                    createConnection(dns.rightCenter, pod3.leftCenter, true);
+                }
+            }
+        }
+        
+        // Redraw on resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                drawConnections(currentType);
+            }, 250);
+        });
+    </script>
+</body>
+</html>

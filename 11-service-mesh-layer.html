@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Mesh Layer - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-app: #F0AB00;
+            --color-app-bg: rgba(240, 171, 0, 0.08);
+            --color-envoy: #00B9E4;
+            --color-envoy-bg: rgba(0, 185, 228, 0.08);
+            --color-control: #3E8635;
+            --color-control-bg: rgba(62, 134, 53, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        /* Toggle switch */
+        .toggle-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .toggle-label {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+        
+        .toggle-label.active {
+            color: var(--rh-red);
+            font-size: 20px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 80px;
+            height: 40px;
+            background: var(--rh-gray-70);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid var(--rh-gray-50);
+        }
+        
+        .toggle-switch.active {
+            background: var(--rh-red);
+            border-color: var(--rh-red);
+        }
+        
+        .toggle-knob {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 28px;
+            height: 28px;
+            background: var(--text-primary);
+            border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .toggle-switch.active .toggle-knob {
+            transform: translateX(40px);
+        }
+        
+        /* Diagram container */
+        .diagram-container {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid var(--rh-gray-70);
+            min-height: 600px;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: visible;
+        }
+        
+        /* Diagrams */
+        .mesh-diagram {
+            display: none;
+            opacity: 0;
+            transform: scale(0.95);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .mesh-diagram.active {
+            display: grid;
+            opacity: 1;
+            transform: scale(1);
+        }
+        
+        /* Without mesh layout */
+        #diagram-without.active {
+            grid-template-columns: 1fr 1fr;
+            gap: 120px;
+            align-items: center;
+            justify-items: center;
+        }
+        
+        /* With mesh layout */
+        #diagram-with.active {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            align-items: start;
+        }
+        
+        /* Pod containers */
+        .pod-container {
+            background: var(--rh-gray-80);
+            border: 3px solid var(--rh-gray-70);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .pod-container.with-sidecar {
+            border-color: var(--color-envoy);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-envoy-bg) 100%);
+        }
+        
+        .pod-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--rh-gray-70);
+        }
+        
+        /* Component styling */
+        .component {
+            background: var(--rh-gray-80);
+            border: 3px solid var(--rh-gray-70);
+            border-radius: 12px;
+            padding: 24px 20px;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .component:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        .component.app {
+            border-color: var(--color-app);
+        }
+        
+        .component.app::before {
+            background: var(--color-app);
+        }
+        
+        .component.envoy {
+            border-color: var(--color-envoy);
+        }
+        
+        .component.envoy::before {
+            background: var(--color-envoy);
+        }
+        
+        .component.control {
+            border-color: var(--color-control);
+            grid-column: 3;
+            grid-row: 1;
+        }
+        
+        .component.control::before {
+            background: var(--color-control);
+        }
+        
+        .component-icon {
+            font-size: 36px;
+            margin-bottom: 12px;
+        }
+        
+        .component-label {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .component-detail {
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        
+        /* Features box */
+        .features-box {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, rgba(238, 0, 0, 0.05) 100%);
+            border: 2px solid var(--rh-red);
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 20px;
+        }
+        
+        .features-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--rh-red);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--rh-gray-90);
+            border-radius: 8px;
+            border: 1px solid var(--rh-gray-70);
+            transition: all 0.3s ease;
+        }
+        
+        .feature-item:hover {
+            border-color: var(--rh-red);
+            transform: translateX(4px);
+        }
+        
+        .feature-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .feature-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        /* Connection lines */
+        .connection-line {
+            stroke: var(--rh-red);
+            stroke-width: 4;
+            fill: none;
+            stroke-linecap: round;
+        }
+        
+        .connection-line.animated {
+            stroke-dasharray: 10 5;
+            animation: dashFlow 2s linear infinite;
+        }
+        
+        .connection-line.encrypted {
+            stroke: #3E8635;
+            stroke-width: 5;
+        }
+        
+        .connection-line.config {
+            stroke: var(--color-control);
+            stroke-width: 2;
+            stroke-dasharray: 5 5;
+            opacity: 0.6;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -150;
+            }
+        }
+        
+        .connection-label-bg {
+            fill: var(--rh-gray-90);
+            stroke-width: 1;
+            rx: 4;
+        }
+        
+        .connection-label-bg.encrypted {
+            stroke: #3E8635;
+        }
+        
+        .connection-label-bg.config {
+            stroke: var(--color-control);
+        }
+        
+        .connection-label {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            fill: var(--rh-red);
+        }
+        
+        .connection-label.encrypted {
+            fill: #3E8635;
+        }
+        
+        .connection-label.config {
+            fill: var(--color-control);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Service Mesh Layer</h1>
+            <div class="subtitle">Red Hat OpenShift Service Mesh (Istio/OSSM)</div>
+        </div>
+        
+        <div class="toggle-container">
+            <span class="toggle-label active" id="label-without">Without Service Mesh</span>
+            <div class="toggle-switch" id="toggleSwitch">
+                <div class="toggle-knob"></div>
+            </div>
+            <span class="toggle-label" id="label-with">With Service Mesh</span>
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                    <marker id="arrowhead-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#3E8635" />
+                    </marker>
+                    <marker id="arrowhead-control" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--color-control)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- Without Service Mesh -->
+            <div class="mesh-diagram active" id="diagram-without">
+                <div class="component app" data-component="without-app-a">
+                    <div class="component-icon">📦</div>
+                    <div class="component-label">App A Pod</div>
+                    <div class="component-detail">Direct communication<br/>No encryption<br/>No observability</div>
+                </div>
+                
+                <div class="component app" data-component="without-app-b">
+                    <div class="component-icon">📦</div>
+                    <div class="component-label">App B Pod</div>
+                    <div class="component-detail">Direct communication<br/>No encryption<br/>No observability</div>
+                </div>
+            </div>
+            
+            <!-- With Service Mesh -->
+            <div class="mesh-diagram" id="diagram-with">
+                <!-- App A Pod with Sidecar -->
+                <div class="pod-container with-sidecar">
+                    <div class="pod-title">App A Pod</div>
+                    <div class="component app" data-component="with-app-a">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">App A Container</div>
+                        <div class="component-detail">localhost:8080</div>
+                    </div>
+                    <div class="component envoy" data-component="with-envoy-a">
+                        <div class="component-icon">🔷</div>
+                        <div class="component-label">Envoy Sidecar</div>
+                        <div class="component-detail">Proxy & Policy Enforcement</div>
+                    </div>
+                </div>
+                
+                <!-- App B Pod with Sidecar -->
+                <div class="pod-container with-sidecar">
+                    <div class="pod-title">App B Pod</div>
+                    <div class="component app" data-component="with-app-b">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">App B Container</div>
+                        <div class="component-detail">localhost:8080</div>
+                    </div>
+                    <div class="component envoy" data-component="with-envoy-b">
+                        <div class="component-icon">🔷</div>
+                        <div class="component-label">Envoy Sidecar</div>
+                        <div class="component-detail">Proxy & Policy Enforcement</div>
+                    </div>
+                </div>
+                
+                <!-- Control Plane -->
+                <div class="component control" data-component="control-plane">
+                    <div class="component-icon">🎛️</div>
+                    <div class="component-label">Istiod</div>
+                    <div class="component-detail">Control Plane<br/>Certificate Authority<br/>Configuration</div>
+                </div>
+                
+                <!-- Features -->
+                <div class="features-box">
+                    <div class="features-title">
+                        <span>🚀</span>
+                        <span>Service Mesh Capabilities</span>
+                    </div>
+                    <div class="features-grid">
+                        <div class="feature-item">
+                            <span class="feature-icon">🔒</span>
+                            <span class="feature-text">Automatic mTLS Encryption</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🔄</span>
+                            <span class="feature-text">Traffic Routing & Canary Deployments</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">⏱️</span>
+                            <span class="feature-text">Retries, Timeouts & Circuit Breaking</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📊</span>
+                            <span class="feature-text">Distributed Tracing & Metrics</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🎯</span>
+                            <span class="feature-text">Fine-grained Access Control</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🔍</span>
+                            <span class="feature-text">Service-to-Service Observability</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let meshEnabled = false;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            setupToggle();
+            drawConnections();
+        });
+        
+        function setupToggle() {
+            const toggleSwitch = document.getElementById('toggleSwitch');
+            const labelWithout = document.getElementById('label-without');
+            const labelWith = document.getElementById('label-with');
+            
+            toggleSwitch.addEventListener('click', function() {
+                meshEnabled = !meshEnabled;
+                
+                // Update toggle
+                toggleSwitch.classList.toggle('active');
+                
+                // Update labels
+                labelWithout.classList.toggle('active');
+                labelWith.classList.toggle('active');
+                
+                // Switch diagrams
+                document.getElementById('diagram-without').classList.toggle('active');
+                document.getElementById('diagram-with').classList.toggle('active');
+                
+                // Redraw connections
+                setTimeout(() => drawConnections(), 100);
+            });
+        }
+        
+        function drawConnections() {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Clear existing connections
+            while (svg.childNodes.length > 1) {
+                svg.removeChild(svg.lastChild);
+            }
+            
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            function getComponentBox(selector) {
+                const element = document.querySelector(`[data-component="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY },
+                    topCenter: { x: centerX, y: top },
+                    bottomCenter: { x: centerX, y: bottom }
+                };
+            }
+            
+            function createConnection(from, to, type, label) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', from.x);
+                line.setAttribute('y1', from.y);
+                line.setAttribute('x2', to.x);
+                line.setAttribute('y2', to.y);
+                
+                let className = 'connection-line animated';
+                let marker = 'arrowhead-red';
+                
+                if (type === 'encrypted') {
+                    className = 'connection-line encrypted animated';
+                    marker = 'arrowhead-green';
+                } else if (type === 'config') {
+                    className = 'connection-line config';
+                    marker = 'arrowhead-control';
+                }
+                
+                line.setAttribute('class', className);
+                line.setAttribute('marker-end', `url(#${marker})`);
+                svg.appendChild(line);
+                
+                // Add label
+                if (label) {
+                    const midX = (from.x + to.x) / 2;
+                    const midY = (from.y + to.y) / 2 - 20;
+                    
+                    const padding = 8;
+                    const textWidth = label.length * 7.5 + padding * 2;
+                    const textHeight = 22;
+                    
+                    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    bgRect.setAttribute('x', midX - textWidth / 2);
+                    bgRect.setAttribute('y', midY - textHeight / 2);
+                    bgRect.setAttribute('width', textWidth);
+                    bgRect.setAttribute('height', textHeight);
+                    bgRect.setAttribute('class', `connection-label-bg ${type || ''}`);
+                    bgRect.setAttribute('stroke', type === 'encrypted' ? '#3E8635' : (type === 'config' ? 'var(--color-control)' : 'var(--rh-red)'));
+                    svg.appendChild(bgRect);
+                    
+                    const labelEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    labelEl.setAttribute('x', midX);
+                    labelEl.setAttribute('y', midY);
+                    labelEl.setAttribute('class', `connection-label ${type || ''}`);
+                    labelEl.textContent = label;
+                    svg.appendChild(labelEl);
+                }
+            }
+            
+            if (!meshEnabled) {
+                // Without mesh - direct connection
+                const appA = getComponentBox('without-app-a');
+                const appB = getComponentBox('without-app-b');
+                
+                if (appA && appB) {
+                    createConnection(appA.rightCenter, appB.leftCenter, '', 'Direct HTTP');
+                }
+            } else {
+                // With mesh - app to sidecar, sidecar to sidecar, control plane
+                const appA = getComponentBox('with-app-a');
+                const envoyA = getComponentBox('with-envoy-a');
+                const appB = getComponentBox('with-app-b');
+                const envoyB = getComponentBox('with-envoy-b');
+                const control = getComponentBox('control-plane');
+                
+                if (appA && envoyA) {
+                    createConnection(appA.bottomCenter, envoyA.topCenter, '', null);
+                }
+                
+                if (appB && envoyB) {
+                    createConnection(appB.bottomCenter, envoyB.topCenter, '', null);
+                }
+                
+                if (envoyA && envoyB) {
+                    createConnection(envoyA.rightCenter, envoyB.leftCenter, 'encrypted', 'mTLS Encrypted');
+                }
+                
+                if (control && envoyA) {
+                    createConnection(control.leftCenter, envoyA.topCenter, 'config', 'Config');
+                }
+                
+                if (control && envoyB) {
+                    createConnection(control.bottomCenter, envoyB.topCenter, 'config', 'Config');
+                }
+            }
+        }
+        
+        // Redraw on resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(drawConnections, 250);
+        });
+    </script>
+</body>
+</html>

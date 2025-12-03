@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pod-to-Pod Communication - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-pod: #F0AB00; /* Amber for pods */
+            --color-pod-bg: rgba(240, 171, 0, 0.08);
+            --color-ovs: #3E8635; /* Green for OVS */
+            --color-ovs-bg: rgba(62, 134, 53, 0.08);
+            --color-tunnel: #EE0000; /* Red for tunnel */
+            --color-tunnel-bg: rgba(238, 0, 0, 0.08);
+            --color-veth: #00B9E4; /* Teal for veth */
+            --color-veth-bg: rgba(0, 185, 228, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        .diagram-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+            overflow: visible;
+        }
+        
+        /* Node sections */
+        .node-section {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px;
+            border: 2px solid var(--rh-gray-70);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .node-section:hover {
+            transform: translateY(-4px);
+            border-color: var(--rh-gray-50);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .section-header:hover {
+            opacity: 0.8;
+        }
+        
+        .expand-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: var(--rh-gray-80);
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        
+        .expand-icon::after {
+            content: '▼';
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+        
+        .node-section.collapsed .expand-icon::after {
+            transform: rotate(-90deg);
+        }
+        
+        .section-title {
+            flex: 1;
+        }
+        
+        .section-title h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: var(--rh-red);
+        }
+        
+        .section-title .node-ip {
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+            letter-spacing: 0.02em;
+        }
+        
+        .node-section.collapsed .section-header {
+            margin-bottom: 0;
+        }
+        
+        /* Component grid */
+        .components-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            max-height: 1000px;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+        }
+        
+        .node-section.collapsed .components-grid {
+            max-height: 0;
+            opacity: 0;
+        }
+        
+        /* Component boxes */
+        .component {
+            position: relative;
+            background: var(--rh-gray-80);
+            border-radius: 12px;
+            padding: 24px;
+            border: 2px solid var(--rh-gray-70);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--rh-gray-70);
+            transition: all 0.3s ease;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .component:hover {
+            transform: translateX(4px);
+            border-color: var(--rh-red);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.2);
+        }
+        
+        /* Pod styling */
+        .component.pod {
+            border-color: var(--color-pod);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-pod-bg) 100%);
+        }
+        
+        .component.pod::before {
+            background: var(--color-pod);
+        }
+        
+        .component.pod:hover {
+            border-color: var(--color-pod);
+            box-shadow: 0 8px 24px rgba(240, 171, 0, 0.3);
+        }
+        
+        /* veth styling */
+        .component.veth {
+            border-color: var(--color-veth);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-veth-bg) 100%);
+        }
+        
+        .component.veth::before {
+            background: var(--color-veth);
+        }
+        
+        .component.veth:hover {
+            border-color: var(--color-veth);
+            box-shadow: 0 8px 24px rgba(0, 185, 228, 0.3);
+        }
+        
+        /* OVS styling */
+        .component.ovs {
+            border-color: var(--color-ovs);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-ovs-bg) 100%);
+        }
+        
+        .component.ovs::before {
+            background: var(--color-ovs);
+        }
+        
+        .component.ovs:hover {
+            border-color: var(--color-ovs);
+            box-shadow: 0 8px 24px rgba(62, 134, 53, 0.3);
+        }
+        
+        .component-label {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .component-detail {
+            font-family: 'Space Mono', monospace;
+            font-size: 13px;
+            color: var(--rh-red);
+            font-weight: 700;
+        }
+        
+        .component-type {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        /* Tunnel section - special styling */
+        .tunnel-section {
+            position: relative;
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, var(--color-tunnel-bg) 100%);
+            border: 2px solid var(--rh-red);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .tunnel-section:hover {
+            transform: translateY(-4px);
+            border-color: var(--rh-red-light);
+            box-shadow: 0 20px 60px rgba(238, 0, 0, 0.3);
+        }
+        
+        .tunnel-section.collapsed .section-header {
+            margin-bottom: 0;
+        }
+        
+        .tunnel-section .components-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            max-height: 1000px;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+        }
+        
+        .tunnel-section.collapsed .components-grid {
+            max-height: 0;
+            opacity: 0;
+        }
+        
+        .tunnel-section .component {
+            border-color: var(--rh-red);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .tunnel-section .component::before {
+            background: var(--rh-red);
+        }
+        
+        .tunnel-section .component:hover {
+            border-color: var(--rh-red);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.4);
+            transform: scale(1.02);
+        }
+        
+        /* Connection styling */
+        .connection-line {
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+        }
+        
+        .connection-internal {
+            stroke: var(--color-veth);
+            stroke-width: 3;
+        }
+        
+        .connection-tunnel {
+            stroke: var(--rh-red);
+            stroke-width: 3;
+            stroke-dasharray: 10 5;
+            animation: dashFlow 20s linear infinite;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -150;
+            }
+        }
+        
+        /* Connection labels */
+        .connection-label-bg {
+            fill: var(--rh-gray-90);
+            stroke: var(--rh-red);
+            stroke-width: 1;
+            rx: 4;
+        }
+        
+        .connection-label {
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            fill: var(--rh-red);
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+        
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 40px;
+            padding: 24px;
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.6s both;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .legend-box {
+            width: 40px;
+            height: 24px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+        
+        .legend-box.pod {
+            background: var(--color-pod-bg);
+            border-color: var(--color-pod);
+        }
+        
+        .legend-box.veth {
+            background: var(--color-veth-bg);
+            border-color: var(--color-veth);
+        }
+        
+        .legend-box.ovs {
+            background: var(--color-ovs-bg);
+            border-color: var(--color-ovs);
+        }
+        
+        .legend-box.tunnel {
+            background: var(--color-tunnel-bg);
+            border-color: var(--rh-red);
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'Red Hat Mono', monospace;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .header h1 {
+                font-size: 36px;
+            }
+            
+            .legend {
+                flex-direction: column;
+                gap: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Pod-to-Pod Communication</h1>
+            <div class="subtitle">Cross-Node Overlay Network</div>
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- Node 1 Section -->
+            <div class="node-section collapsed" data-section="node1">
+                <div class="section-header">
+                    <div class="expand-icon"></div>
+                    <div class="section-title">
+                        <h2>Node 1</h2>
+                        <div class="node-ip">10.0.1.10</div>
+                    </div>
+                </div>
+                <div class="components-grid">
+                    <div class="component pod" data-component="pod1">
+                        <div class="component-label">Pod A</div>
+                        <div class="component-detail">10.128.1.5</div>
+                        <div class="component-type">eth0</div>
+                    </div>
+                    <div class="component veth" data-component="veth1">
+                        <div class="component-label">veth0</div>
+                        <div class="component-type">Virtual Ethernet Pair</div>
+                    </div>
+                    <div class="component ovs" data-component="ovs1">
+                        <div class="component-label">OVS Bridge</div>
+                        <div class="component-detail">br-int</div>
+                        <div class="component-type">Open vSwitch</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tunnel Section -->
+            <div class="tunnel-section collapsed" data-section="tunnel">
+                <div class="section-header">
+                    <div class="expand-icon"></div>
+                    <div class="section-title">
+                        <h2>Geneve Tunnel</h2>
+                        <div class="node-ip">Overlay Network Encapsulation</div>
+                    </div>
+                </div>
+                <div class="components-grid">
+                    <div class="component" data-component="tunnel">
+                        <div class="component-label">Overlay Network</div>
+                        <div class="component-detail">Geneve Encapsulation</div>
+                        <div class="component-type">Node IP: 10.0.1.10 → 10.0.1.11</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Node 2 Section -->
+            <div class="node-section collapsed" data-section="node2">
+                <div class="section-header">
+                    <div class="expand-icon"></div>
+                    <div class="section-title">
+                        <h2>Node 2</h2>
+                        <div class="node-ip">10.0.1.11</div>
+                    </div>
+                </div>
+                <div class="components-grid">
+                    <div class="component ovs" data-component="ovs2">
+                        <div class="component-label">OVS Bridge</div>
+                        <div class="component-detail">br-int</div>
+                        <div class="component-type">Open vSwitch</div>
+                    </div>
+                    <div class="component veth" data-component="veth2">
+                        <div class="component-label">veth1</div>
+                        <div class="component-type">Virtual Ethernet Pair</div>
+                    </div>
+                    <div class="component pod" data-component="pod2">
+                        <div class="component-label">Pod B</div>
+                        <div class="component-detail">10.128.2.10</div>
+                        <div class="component-type">eth0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box pod"></div>
+                <div class="legend-text">Pod (Application Container)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box veth"></div>
+                <div class="legend-text">veth (Virtual Ethernet)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box ovs"></div>
+                <div class="legend-text">OVS (Open vSwitch Bridge)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box tunnel"></div>
+                <div class="legend-text">Geneve Tunnel (Encapsulation)</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Wait for DOM to load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupCollapsible();
+            drawConnections();
+            
+            // Redraw on window resize
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(drawConnections, 100);
+            });
+        });
+        
+        function setupCollapsible() {
+            document.querySelectorAll('.section-header').forEach(header => {
+                header.addEventListener('click', function() {
+                    const section = this.closest('.node-section, .tunnel-section');
+                    section.classList.toggle('collapsed');
+                    
+                    // Redraw connections after animation completes
+                    setTimeout(() => {
+                        drawConnections();
+                    }, 500);
+                });
+            });
+        }
+        
+        function isSectionExpanded(sectionName) {
+            const section = document.querySelector(`[data-section="${sectionName}"]`);
+            return section && !section.classList.contains('collapsed');
+        }
+        
+        function drawConnections() {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Clear existing connections
+            while (svg.childNodes.length > 1) { // Keep the defs
+                svg.removeChild(svg.lastChild);
+            }
+            
+            // Set SVG dimensions to match container
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            // Helper function to get component box with edge centers
+            function getComponentBox(selector) {
+                const element = document.querySelector(`[data-component="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    topCenter: { x: centerX, y: top },
+                    bottomCenter: { x: centerX, y: bottom },
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY },
+                    left, right, top, bottom, centerX, centerY
+                };
+            }
+            
+            // Create a line between two points
+            function createLine(fromPoint, toPoint, className) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromPoint.x);
+                line.setAttribute('y1', fromPoint.y);
+                line.setAttribute('x2', toPoint.x);
+                line.setAttribute('y2', toPoint.y);
+                line.setAttribute('class', `connection-line ${className}`);
+                svg.appendChild(line);
+            }
+            
+            // Create curved path
+            function createCurvedPath(fromPoint, toPoint, className, curveFactor = 0.1) {
+                const dx = toPoint.x - fromPoint.x;
+                const dy = toPoint.y - fromPoint.y;
+                
+                const cx = fromPoint.x + dx / 2;
+                const cy = fromPoint.y + dy / 2 - Math.abs(dy) * curveFactor;
+                
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const d = `M ${fromPoint.x} ${fromPoint.y} Q ${cx} ${cy} ${toPoint.x} ${toPoint.y}`;
+                path.setAttribute('d', d);
+                path.setAttribute('class', `connection-line ${className}`);
+                svg.appendChild(path);
+            }
+            
+            // Add text label to connection with background
+            function addConnectionLabel(x, y, text) {
+                // Measure text to create background box
+                const padding = 8;
+                const width = text.length * 8 + padding * 2;
+                const height = 24;
+                
+                // Add background rectangle
+                const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                bg.setAttribute('x', x - width / 2);
+                bg.setAttribute('y', y - height / 2);
+                bg.setAttribute('width', width);
+                bg.setAttribute('height', height);
+                bg.setAttribute('class', 'connection-label-bg');
+                svg.appendChild(bg);
+                
+                // Add text
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', x);
+                label.setAttribute('y', y);
+                label.setAttribute('class', 'connection-label');
+                label.textContent = text;
+                svg.appendChild(label);
+            }
+            
+            // Node 1 internal connections (only if node1 is expanded)
+            if (isSectionExpanded('node1')) {
+                const pod1 = getComponentBox('pod1');
+                const veth1 = getComponentBox('veth1');
+                const ovs1 = getComponentBox('ovs1');
+                
+                if (pod1 && veth1) {
+                    createLine(pod1.bottomCenter, veth1.topCenter, 'connection-internal');
+                }
+                if (veth1 && ovs1) {
+                    createLine(veth1.bottomCenter, ovs1.topCenter, 'connection-internal');
+                }
+            }
+            
+            // Connection from Node 1 OVS to Tunnel (if both are expanded)
+            if (isSectionExpanded('node1') && isSectionExpanded('tunnel')) {
+                const ovs1 = getComponentBox('ovs1');
+                const tunnel = getComponentBox('tunnel');
+                
+                if (ovs1 && tunnel) {
+                    createCurvedPath(ovs1.bottomCenter, tunnel.topCenter, 'connection-tunnel', 0.08);
+                    
+                    // Add label for encapsulation
+                    const midX = (ovs1.centerX + tunnel.centerX) / 2;
+                    const midY = (ovs1.bottom + tunnel.top) / 2 - 10;
+                    addConnectionLabel(midX, midY, 'Encap');
+                }
+            }
+            
+            // Connection from Tunnel to Node 2 OVS (if both are expanded)
+            if (isSectionExpanded('tunnel') && isSectionExpanded('node2')) {
+                const tunnel = getComponentBox('tunnel');
+                const ovs2 = getComponentBox('ovs2');
+                
+                if (tunnel && ovs2) {
+                    createCurvedPath(tunnel.bottomCenter, ovs2.topCenter, 'connection-tunnel', 0.08);
+                    
+                    // Add label for decapsulation
+                    const midX = (tunnel.centerX + ovs2.centerX) / 2;
+                    const midY = (tunnel.bottom + ovs2.top) / 2 - 10;
+                    addConnectionLabel(midX, midY, 'Decap');
+                }
+            }
+            
+            // Node 2 internal connections (only if node2 is expanded)
+            if (isSectionExpanded('node2')) {
+                const ovs2 = getComponentBox('ovs2');
+                const veth2 = getComponentBox('veth2');
+                const pod2 = getComponentBox('pod2');
+                
+                if (ovs2 && veth2) {
+                    createLine(ovs2.bottomCenter, veth2.topCenter, 'connection-internal');
+                }
+                if (veth2 && pod2) {
+                    createLine(veth2.bottomCenter, pod2.topCenter, 'connection-internal');
+                }
+            }
+        }
+        
+        // Interactive hover effects
+        document.querySelectorAll('.component').forEach(component => {
+            component.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateX(8px) scale(1.02)';
+            });
+            
+            component.addEventListener('mouseleave', function() {
+                this.style.transform = '';
+            });
+        });
+    </script>
+</body>
+</html>

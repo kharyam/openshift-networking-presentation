@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Load Balancing - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-request: #00B9E4;
+            --color-response: #92D400;
+            --color-note: #F0AB00;
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1800px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .btn {
+            padding: 14px 32px;
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            border: 2px solid var(--rh-red);
+            background: var(--rh-gray-90);
+            color: var(--text-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .btn:hover {
+            background: var(--rh-red);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.3);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn:disabled:hover {
+            background: var(--rh-gray-90);
+            box-shadow: none;
+        }
+        
+        .step-indicator {
+            text-align: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+        
+        .step-indicator .current-step {
+            color: var(--rh-red);
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        /* Sequence Diagram */
+        .sequence-diagram {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 60px 40px;
+            border: 1px solid var(--rh-gray-70);
+            min-height: 900px;
+            animation: fadeIn 1s ease-out 0.5s both;
+        }
+        
+        /* Participants */
+        .participants {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 60px;
+            position: relative;
+        }
+        
+        .participant {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        
+        .participant-box {
+            background: var(--rh-gray-80);
+            border: 2px solid var(--rh-gray-70);
+            border-radius: 12px;
+            padding: 20px 16px;
+            min-width: 180px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .participant-box.active {
+            border-color: var(--rh-red);
+            box-shadow: 0 0 30px rgba(238, 0, 0, 0.4);
+            transform: scale(1.05);
+        }
+        
+        .participant-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .participant-detail {
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            color: var(--rh-red);
+        }
+        
+        /* Lifelines */
+        .lifeline {
+            width: 2px;
+            background: var(--rh-gray-70);
+            position: absolute;
+            top: 80px;
+            bottom: -800px;
+            left: 50%;
+            transform: translateX(-1px);
+        }
+        
+        /* Messages container */
+        .messages-container {
+            position: relative;
+            margin-top: 40px;
+            min-height: 700px;
+        }
+        
+        /* Message */
+        .message {
+            position: absolute;
+            width: 100%;
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .message.visible {
+            opacity: 1;
+            animation: fadeInMessage 0.5s ease-out forwards;
+        }
+        
+        @keyframes fadeInMessage {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message-line {
+            background: var(--color-request);
+            height: 2px;
+            animation: drawLine 0.6s ease-out forwards;
+            transform-origin: left center;
+        }
+        
+        @keyframes drawLine {
+            from {
+                transform: scaleX(0);
+            }
+            to {
+                transform: scaleX(1);
+            }
+        }
+        
+        .message-line.request {
+            background: var(--color-request);
+            box-shadow: 0 0 10px rgba(0, 185, 228, 0.5);
+        }
+        
+        .message-line.response {
+            background: var(--color-response);
+            box-shadow: 0 0 10px rgba(146, 212, 0, 0.5);
+        }
+        
+        /* Arrow */
+        .arrow {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            animation: fadeIn 0.3s ease-out 0.6s both;
+        }
+        
+        .arrow.right {
+            border-width: 6px 0 6px 12px;
+            right: 0;
+            top: -5px;
+        }
+        
+        .arrow.right.request {
+            border-color: transparent transparent transparent var(--color-request);
+        }
+        
+        .arrow.right.response {
+            border-color: transparent transparent transparent var(--color-response);
+        }
+        
+        .arrow.left {
+            border-width: 6px 12px 6px 0;
+            left: 0;
+            top: -5px;
+        }
+        
+        .arrow.left.response {
+            border-color: transparent var(--color-response) transparent transparent;
+        }
+        
+        /* Message label */
+        .message-label {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            padding: 4px 12px;
+            border-radius: 6px;
+            animation: fadeIn 0.3s ease-out 0.6s both;
+        }
+        
+        .message-label.request {
+            background: var(--color-request);
+            color: var(--rh-black);
+        }
+        
+        .message-label.response {
+            background: var(--color-response);
+            color: var(--rh-black);
+        }
+        
+        /* Note */
+        .note {
+            position: absolute;
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, rgba(240, 171, 0, 0.1) 100%);
+            border: 2px solid var(--color-note);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 12px;
+            color: var(--text-primary);
+            line-height: 1.6;
+            opacity: 0;
+            animation: fadeIn 0.5s ease-out 0.3s both;
+            max-width: 300px;
+            box-shadow: 0 4px 12px rgba(240, 171, 0, 0.2);
+        }
+        
+        .note.visible {
+            opacity: 1;
+        }
+        
+        .note strong {
+            color: var(--color-note);
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 20px;
+            margin-bottom: 30px;
+            padding: 20px 24px;
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.4s both;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .legend-line {
+            width: 40px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        
+        .legend-line.request {
+            background: var(--color-request);
+        }
+        
+        .legend-line.response {
+            background: var(--color-response);
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'Red Hat Mono', monospace;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .participant-box {
+                min-width: 140px;
+                padding: 16px 12px;
+            }
+            
+            .participant-name {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Service Load Balancing</h1>
+            <div class="subtitle">OVN-Kubernetes Service Discovery & Distribution</div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" id="prevBtn" disabled>← Previous</button>
+            <button class="btn" id="resetBtn">Reset</button>
+            <button class="btn" id="nextBtn">Next →</button>
+        </div>
+        
+        <div class="step-indicator">
+            Step <span class="current-step" id="stepNumber">0</span> of <span id="totalSteps">11</span>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-line request"></div>
+                <div class="legend-text">Request</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line response"></div>
+                <div class="legend-text">Response</div>
+            </div>
+        </div>
+        
+        <div class="sequence-diagram">
+            <!-- Participants -->
+            <div class="participants">
+                <div class="participant" data-participant="app">
+                    <div class="participant-box">
+                        <div class="participant-name">Application Pod</div>
+                    </div>
+                    <div class="lifeline"></div>
+                </div>
+                
+                <div class="participant" data-participant="dns">
+                    <div class="participant-box">
+                        <div class="participant-name">CoreDNS</div>
+                    </div>
+                    <div class="lifeline"></div>
+                </div>
+                
+                <div class="participant" data-participant="ovn">
+                    <div class="participant-box">
+                        <div class="participant-name">OVN-K Load Balancer</div>
+                    </div>
+                    <div class="lifeline"></div>
+                </div>
+                
+                <div class="participant" data-participant="pod1">
+                    <div class="participant-box">
+                        <div class="participant-name">Backend Pod 1</div>
+                        <div class="participant-detail">10.128.2.10</div>
+                    </div>
+                    <div class="lifeline"></div>
+                </div>
+                
+                <div class="participant" data-participant="pod2">
+                    <div class="participant-box">
+                        <div class="participant-name">Backend Pod 2</div>
+                        <div class="participant-detail">10.128.2.11</div>
+                    </div>
+                    <div class="lifeline"></div>
+                </div>
+                
+                <div class="participant" data-participant="pod3">
+                    <div class="participant-box">
+                        <div class="participant-name">Backend Pod 3</div>
+                        <div class="participant-detail">10.128.3.15</div>
+                    </div>
+                    <div class="lifeline"></div>
+                </div>
+            </div>
+            
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer">
+                <!-- Messages will be dynamically positioned here -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Sequence steps definition
+        const steps = [
+            {
+                from: 'app',
+                to: 'dns',
+                type: 'request',
+                label: 'Lookup backend-service',
+                y: 0
+            },
+            {
+                from: 'dns',
+                to: 'app',
+                type: 'response',
+                label: '172.30.45.100 (Service VIP)',
+                y: 60
+            },
+            {
+                from: 'app',
+                to: 'ovn',
+                type: 'request',
+                label: 'HTTP GET 172.30.45.100:8080',
+                y: 120,
+                note: {
+                    text: '<strong>DNAT: Destination rewritten</strong><br/>172.30.45.100 → 10.128.2.10',
+                    position: 'ovn',
+                    yOffset: 140
+                }
+            },
+            {
+                from: 'ovn',
+                to: 'pod1',
+                type: 'request',
+                label: 'HTTP GET 10.128.2.10:8080',
+                y: 210
+            },
+            {
+                from: 'pod1',
+                to: 'app',
+                type: 'response',
+                label: 'Response',
+                y: 270
+            },
+            {
+                from: 'app',
+                to: 'ovn',
+                type: 'request',
+                label: 'HTTP GET 172.30.45.100:8080',
+                y: 330,
+                note: {
+                    text: '<strong>Load Balance: Round-robin</strong><br/>172.30.45.100 → 10.128.2.11',
+                    position: 'ovn',
+                    yOffset: 350
+                }
+            },
+            {
+                from: 'ovn',
+                to: 'pod2',
+                type: 'request',
+                label: 'HTTP GET 10.128.2.11:8080',
+                y: 420
+            },
+            {
+                from: 'pod2',
+                to: 'app',
+                type: 'response',
+                label: 'Response',
+                y: 480
+            },
+            {
+                from: 'app',
+                to: 'ovn',
+                type: 'request',
+                label: 'HTTP GET 172.30.45.100:8080',
+                y: 540,
+                note: {
+                    text: '<strong>Load Balance: Next endpoint</strong><br/>172.30.45.100 → 10.128.3.15',
+                    position: 'ovn',
+                    yOffset: 560
+                }
+            },
+            {
+                from: 'ovn',
+                to: 'pod3',
+                type: 'request',
+                label: 'HTTP GET 10.128.3.15:8080',
+                y: 630
+            },
+            {
+                from: 'pod3',
+                to: 'app',
+                type: 'response',
+                label: 'Response',
+                y: 690
+            }
+        ];
+        
+        let currentStep = 0;
+        const totalSteps = steps.length;
+        
+        // Get participant positions
+        function getParticipantPosition(name) {
+            const participant = document.querySelector(`[data-participant="${name}"]`);
+            const container = document.getElementById('messagesContainer');
+            const participantRect = participant.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            return {
+                x: participantRect.left + participantRect.width / 2 - containerRect.left,
+                width: participantRect.width
+            };
+        }
+        
+        // Create message element
+        function createMessage(step, index) {
+            const container = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.dataset.step = index;
+            
+            const fromPos = getParticipantPosition(step.from);
+            const toPos = getParticipantPosition(step.to);
+            
+            const isRightward = toPos.x > fromPos.x;
+            const startX = fromPos.x;
+            const endX = toPos.x;
+            const width = Math.abs(endX - startX);
+            const left = Math.min(startX, endX);
+            
+            // Create message line wrapper
+            const lineWrapper = document.createElement('div');
+            lineWrapper.style.position = 'absolute';
+            lineWrapper.style.top = `${step.y}px`;
+            lineWrapper.style.left = `${left}px`;
+            lineWrapper.style.width = `${width}px`;
+            lineWrapper.style.height = '2px';
+            
+            // Create message line
+            const line = document.createElement('div');
+            line.className = `message-line ${step.type}`;
+            line.style.position = 'absolute';
+            line.style.width = '100%';
+            line.style.height = '2px';
+            line.style.top = '0';
+            line.style.left = '0';
+            
+            lineWrapper.appendChild(line);
+            
+            // Create arrow
+            const arrow = document.createElement('div');
+            arrow.className = `arrow ${isRightward ? 'right' : 'left'} ${step.type}`;
+            
+            lineWrapper.appendChild(arrow);
+            
+            // Create label
+            const label = document.createElement('div');
+            label.className = `message-label ${step.type}`;
+            label.textContent = step.label;
+            label.style.position = 'absolute';
+            label.style.top = '-30px';
+            label.style.left = '50%';
+            label.style.transform = 'translateX(-50%)';
+            label.style.pointerEvents = 'none';
+            lineWrapper.appendChild(label);
+            
+            messageDiv.appendChild(lineWrapper);
+            
+            // Create note if present
+            if (step.note) {
+                const note = document.createElement('div');
+                note.className = 'note';
+                note.innerHTML = step.note.text;
+                note.style.top = `${step.note.yOffset}px`;
+                const notePos = getParticipantPosition(step.note.position);
+                // Position note far to the left to avoid all line overlap
+                note.style.left = `${notePos.x - 280}px`;
+                messageDiv.appendChild(note);
+            }
+            
+            container.appendChild(messageDiv);
+        }
+        
+        // Initialize all messages (hidden)
+        function initializeMessages() {
+            steps.forEach((step, index) => {
+                createMessage(step, index);
+            });
+        }
+        
+        // Show step
+        function showStep(stepIndex) {
+            // Hide all messages
+            document.querySelectorAll('.message').forEach(msg => {
+                msg.classList.remove('visible');
+            });
+            
+            // Remove active state from all participants
+            document.querySelectorAll('.participant-box').forEach(box => {
+                box.classList.remove('active');
+            });
+            
+            // Show messages up to current step
+            for (let i = 0; i <= stepIndex; i++) {
+                const message = document.querySelector(`[data-step="${i}"]`);
+                if (message) {
+                    message.classList.add('visible');
+                    
+                    // Highlight active participants for current step
+                    if (i === stepIndex) {
+                        const step = steps[i];
+                        const fromParticipant = document.querySelector(`[data-participant="${step.from}"] .participant-box`);
+                        const toParticipant = document.querySelector(`[data-participant="${step.to}"] .participant-box`);
+                        
+                        if (fromParticipant) fromParticipant.classList.add('active');
+                        if (toParticipant) toParticipant.classList.add('active');
+                    }
+                }
+            }
+            
+            // Update step indicator
+            document.getElementById('stepNumber').textContent = stepIndex + 1;
+            
+            // Update button states
+            document.getElementById('prevBtn').disabled = stepIndex === 0;
+            document.getElementById('nextBtn').disabled = stepIndex === totalSteps - 1;
+        }
+        
+        // Event listeners
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                showStep(currentStep);
+            }
+        });
+        
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentStep > 0) {
+                currentStep--;
+                showStep(currentStep);
+            }
+        });
+        
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            currentStep = 0;
+            showStep(currentStep);
+        });
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' && currentStep < totalSteps - 1) {
+                currentStep++;
+                showStep(currentStep);
+            } else if (e.key === 'ArrowLeft' && currentStep > 0) {
+                currentStep--;
+                showStep(currentStep);
+            }
+        });
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            initializeMessages();
+            showStep(currentStep);
+            document.getElementById('totalSteps').textContent = totalSteps;
+        });
+        
+        // Redraw on resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                const container = document.getElementById('messagesContainer');
+                container.innerHTML = '';
+                initializeMessages();
+                showStep(currentStep);
+            }, 250);
+        });
+    </script>
+</body>
+</html>

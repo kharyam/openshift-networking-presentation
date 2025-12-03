@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Network Architecture - Red Hat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Secondary colors for network layers */
+            --layer-infra: #00B9E4; /* Teal for infrastructure */
+            --layer-infra-bg: rgba(0, 185, 228, 0.08);
+            --layer-overlay: #F0AB00; /* Amber for overlay */
+            --layer-overlay-bg: rgba(240, 171, 0, 0.08);
+            --layer-virtual: #A18FFF; /* Purple for virtual */
+            --layer-virtual-bg: rgba(161, 143, 255, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(161, 143, 255, 0.05) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        .diagram-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+            overflow: visible;
+        }
+        
+        .network-layer {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid var(--rh-gray-70);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .network-layer:hover {
+            transform: translateY(-4px);
+            border-color: var(--rh-gray-50);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .layer-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s ease;
+        }
+        
+        .layer-header:hover {
+            opacity: 0.8;
+        }
+        
+        .layer-header .expand-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: var(--rh-gray-80);
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        
+        .layer-header .expand-icon::after {
+            content: '▼';
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+        
+        .network-layer.collapsed .layer-header .expand-icon::after {
+            transform: rotate(-90deg);
+        }
+        
+        .network-layer.collapsed .layer-header {
+            margin-bottom: 0;
+        }
+        
+        .cidr-badge {
+            margin-left: auto;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            background: var(--rh-gray-80);
+            padding: 6px 12px;
+            border-radius: 6px;
+            letter-spacing: 0.02em;
+        }
+        
+        .layer-indicator {
+            width: 6px;
+            height: 40px;
+            border-radius: 3px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .layer-title {
+            flex: 1;
+        }
+        
+        .layer-title h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        
+        .layer-title .layer-type {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        /* Infrastructure Layer */
+        .network-layer.infrastructure {
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, rgba(0, 185, 228, 0.05) 100%);
+            border-color: var(--layer-infra);
+        }
+        
+        .infrastructure .layer-indicator {
+            background: linear-gradient(180deg, var(--layer-infra) 0%, rgba(0, 185, 228, 0.3) 100%);
+        }
+        
+        .infrastructure .layer-title h2 {
+            color: var(--layer-infra);
+        }
+        
+        /* Overlay Layer */
+        .network-layer.overlay {
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, rgba(240, 171, 0, 0.05) 100%);
+            border-color: var(--layer-overlay);
+        }
+        
+        .overlay .layer-indicator {
+            background: linear-gradient(180deg, var(--layer-overlay) 0%, rgba(240, 171, 0, 0.3) 100%);
+        }
+        
+        .overlay .layer-title h2 {
+            color: var(--layer-overlay);
+        }
+        
+        /* Virtual Layer */
+        .network-layer.virtual {
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, rgba(161, 143, 255, 0.05) 100%);
+            border-color: var(--layer-virtual);
+        }
+        
+        .virtual .layer-indicator {
+            background: linear-gradient(180deg, var(--layer-virtual) 0%, rgba(161, 143, 255, 0.3) 100%);
+        }
+        
+        .virtual .layer-title h2 {
+            color: var(--layer-virtual);
+        }
+        
+        /* Ingress Layer */
+        .network-layer.ingress {
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, rgba(238, 0, 0, 0.05) 100%);
+            border-color: var(--rh-red);
+        }
+        
+        .ingress .layer-indicator {
+            background: linear-gradient(180deg, var(--rh-red) 0%, rgba(238, 0, 0, 0.3) 100%);
+        }
+        
+        .ingress .layer-title h2 {
+            color: var(--rh-red);
+        }
+        
+        .nodes-container {
+            display: grid;
+            gap: 24px;
+            max-height: 1000px;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+        }
+        
+        .network-layer.collapsed .nodes-container {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0;
+            padding-top: 0;
+        }
+        
+        .infrastructure .nodes-container {
+            grid-template-columns: repeat(3, 1fr);
+            row-gap: 40px;
+        }
+        
+        .overlay .nodes-container {
+            grid-template-columns: repeat(4, 1fr);
+        }
+        
+        .virtual .nodes-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .ingress .nodes-container {
+            grid-template-columns: 1fr;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .node {
+            position: relative;
+            background: var(--rh-gray-80);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--rh-gray-70);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            overflow: hidden;
+        }
+        
+        .node::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--rh-gray-70);
+            transition: all 0.3s ease;
+        }
+        
+        .node:hover {
+            transform: translateY(-2px);
+            border-color: var(--rh-red);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.2);
+        }
+        
+        .infrastructure .node:hover::before {
+            background: var(--layer-infra);
+        }
+        
+        .overlay .node:hover::before {
+            background: var(--layer-overlay);
+        }
+        
+        .virtual .node:hover::before {
+            background: var(--layer-virtual);
+        }
+        
+        .ingress .node:hover::before {
+            background: var(--rh-red);
+        }
+        
+        .node-label {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .node-ip {
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            color: var(--rh-red);
+            font-weight: 700;
+        }
+        
+        .node-detail {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        
+        .router {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, rgba(238, 0, 0, 0.1) 100%);
+            border: 2px solid var(--rh-red);
+            margin-bottom: 20px;
+        }
+        
+        .router::before {
+            background: var(--rh-red);
+            height: 4px;
+        }
+        
+        .router .node-label {
+            font-size: 18px;
+            color: var(--rh-red);
+        }
+        
+        /* Connection visualization */
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        .connection-line {
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+        }
+        
+        .connection-physical {
+            stroke: var(--rh-gray-50);
+            stroke-width: 3;
+        }
+        
+        .connection-dashed {
+            stroke: var(--rh-red);
+            stroke-width: 2;
+            stroke-dasharray: 8 4;
+            animation: dashFlow 20s linear infinite;
+        }
+        
+        .connection-service {
+            stroke: var(--layer-virtual);
+            stroke-width: 2;
+            stroke-dasharray: 8 4;
+            animation: dashFlow 15s linear infinite;
+        }
+        
+        .connection-ingress {
+            stroke: var(--rh-red);
+            stroke-width: 2;
+            stroke-dasharray: 8 4;
+            animation: dashFlow 12s linear infinite;
+        }
+        
+        .connection-pod {
+            stroke: var(--layer-overlay);
+            stroke-width: 2;
+            stroke-dasharray: 8 4;
+            animation: dashFlow 18s linear infinite;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -100;
+            }
+        }
+        
+        /* Connection dots for animation */
+        .connection-dot {
+            r: 4;
+            fill: var(--rh-red);
+            filter: drop-shadow(0 0 4px var(--rh-red));
+        }
+        
+        .connection-dot.active {
+            animation: dotPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes dotPulse {
+            0%, 100% {
+                r: 4;
+                opacity: 1;
+            }
+            50% {
+                r: 6;
+                opacity: 0.6;
+            }
+        }
+        
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin-top: 40px;
+            padding: 24px;
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.6s both;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .legend-line {
+            width: 40px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        
+        .legend-line.solid {
+            background: var(--rh-gray-50);
+        }
+        
+        .legend-line.dashed {
+            background: linear-gradient(90deg, var(--rh-red) 50%, transparent 50%);
+            background-size: 8px 3px;
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'Red Hat Mono', monospace;
+        }
+        
+        /* Relationship indicators */
+        .relationship-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--rh-red);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            animation: fadeIn 0.5s ease-out;
+            z-index: 10;
+        }
+        
+        .overlay .relationship-badge {
+            background: var(--layer-overlay);
+            color: var(--rh-black);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        @keyframes connectionPulse {
+            0% {
+                opacity: 0;
+                width: 0;
+            }
+            50% {
+                opacity: 0.6;
+            }
+            100% {
+                opacity: 0;
+                width: 100%;
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .header h1 {
+                font-size: 36px;
+            }
+            
+            .infrastructure .nodes-container,
+            .overlay .nodes-container,
+            .virtual .nodes-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .legend {
+                flex-direction: column;
+                gap: 16px;
+            }
+        }
+        
+        /* Interactive hover effects for network flow */
+        .node.active {
+            animation: nodeActive 2s ease-in-out infinite;
+        }
+        
+        @keyframes nodeActive {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(238, 0, 0, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 20px 10px rgba(238, 0, 0, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Kubernetes Network Architecture</h1>
+            <div class="subtitle">OpenShift Network Topology</div>
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- Infrastructure Layer -->
+            <div class="network-layer infrastructure collapsed" data-layer="infrastructure">
+                <div class="layer-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="layer-title">
+                        <h2>Node Network</h2>
+                        <div class="layer-type">Infrastructure Layer</div>
+                    </div>
+                    <div class="cidr-badge">10.0.1.0/24</div>
+                </div>
+                <div class="nodes-container">
+                    <div class="node router" data-node="router">
+                        <div class="node-label">Physical Router</div>
+                        <div class="node-ip">10.0.1.1</div>
+                        <div class="node-detail">Gateway</div>
+                    </div>
+                    <div class="node" data-node="n1">
+                        <div class="node-label">Node 1</div>
+                        <div class="node-ip">10.0.1.10</div>
+                        <div class="node-detail">Hosts: Pod A, Pod B</div>
+                    </div>
+                    <div class="node" data-node="n2">
+                        <div class="node-label">Node 2</div>
+                        <div class="node-ip">10.0.1.11</div>
+                        <div class="node-detail">Available</div>
+                    </div>
+                    <div class="node" data-node="n3">
+                        <div class="node-label">Node 3</div>
+                        <div class="node-ip">10.0.1.12</div>
+                        <div class="node-detail">Hosts: Pod C, Pod D</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Overlay Layer -->
+            <div class="network-layer overlay collapsed" data-layer="overlay">
+                <div class="layer-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="layer-title">
+                        <h2>Pod Network</h2>
+                        <div class="layer-type">Overlay Layer</div>
+                    </div>
+                    <div class="cidr-badge">10.128.0.0/14</div>
+                </div>
+                <div class="nodes-container">
+                    <div class="node" data-node="pa">
+                        <div class="relationship-badge">Node 1</div>
+                        <div class="node-label">Pod A</div>
+                        <div class="node-ip">10.128.1.5</div>
+                        <div class="node-detail">Backend Pod</div>
+                    </div>
+                    <div class="node" data-node="pb">
+                        <div class="relationship-badge">Node 1</div>
+                        <div class="node-label">Pod B</div>
+                        <div class="node-ip">10.128.1.6</div>
+                        <div class="node-detail">Backend Pod</div>
+                    </div>
+                    <div class="node" data-node="pc">
+                        <div class="relationship-badge">Node 3</div>
+                        <div class="node-label">Pod C</div>
+                        <div class="node-ip">10.128.2.10</div>
+                        <div class="node-detail">Frontend Pod</div>
+                    </div>
+                    <div class="node" data-node="pd">
+                        <div class="relationship-badge">Node 3</div>
+                        <div class="node-label">Pod D</div>
+                        <div class="node-ip">10.128.2.11</div>
+                        <div class="node-detail">Frontend Pod</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Virtual Layer -->
+            <div class="network-layer virtual collapsed" data-layer="virtual">
+                <div class="layer-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="layer-title">
+                        <h2>Service Network</h2>
+                        <div class="layer-type">Virtual Layer</div>
+                    </div>
+                    <div class="cidr-badge">172.30.0.0/16</div>
+                </div>
+                <div class="nodes-container">
+                    <div class="node" data-node="s1">
+                        <div class="node-label">backend-svc</div>
+                        <div class="node-ip">172.30.45.100</div>
+                        <div class="node-detail">Service VIP • Load Balances → Pod A, B</div>
+                    </div>
+                    <div class="node" data-node="s2">
+                        <div class="node-label">frontend-svc</div>
+                        <div class="node-ip">172.30.45.101</div>
+                        <div class="node-detail">Service VIP • Load Balances → Pod C, D</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Ingress Layer -->
+            <div class="network-layer ingress collapsed" data-layer="ingress">
+                <div class="layer-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="layer-title">
+                        <h2>Ingress/Route Layer</h2>
+                        <div class="layer-type">External Access</div>
+                    </div>
+                    <div class="cidr-badge">Public</div>
+                </div>
+                <div class="nodes-container">
+                    <div class="node" data-node="route1">
+                        <div class="node-label">OpenShift Route</div>
+                        <div class="node-ip">https://ui.apps.ocp.example.com</div>
+                        <div class="node-detail">External Access → frontend-svc</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-line solid"></div>
+                <div class="legend-text">Physical Connection</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line dashed"></div>
+                <div class="legend-text">Virtual/Overlay Connection</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Wait for DOM to load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupCollapsible();
+            drawConnections();
+            
+            // Redraw on window resize
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(drawConnections, 100);
+            });
+        });
+        
+        function setupCollapsible() {
+            document.querySelectorAll('.layer-header').forEach(header => {
+                header.addEventListener('click', function() {
+                    const layer = this.closest('.network-layer');
+                    layer.classList.toggle('collapsed');
+                    
+                    // Redraw connections after animation completes
+                    setTimeout(() => {
+                        drawConnections();
+                    }, 500);
+                });
+            });
+        }
+        
+        function isLayerExpanded(layerName) {
+            const layer = document.querySelector(`[data-layer="${layerName}"]`);
+            return layer && !layer.classList.contains('collapsed');
+        }
+        
+        function drawConnections() {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Clear existing connections
+            while (svg.childNodes.length > 1) { // Keep the defs
+                svg.removeChild(svg.lastChild);
+            }
+            
+            // Set SVG dimensions to match container
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            // Helper function to get box edges with center points
+            function getNodeBox(selector) {
+                const element = document.querySelector(`[data-node="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    // Edge center points
+                    topCenter: { x: centerX, y: top },
+                    bottomCenter: { x: centerX, y: bottom },
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY },
+                    // Box bounds
+                    left, right, top, bottom, centerX, centerY
+                };
+            }
+            
+            // Create a straight line between two specific points
+            function createLineFromPoints(fromPoint, toPoint, className) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromPoint.x);
+                line.setAttribute('y1', fromPoint.y);
+                line.setAttribute('x2', toPoint.x);
+                line.setAttribute('y2', toPoint.y);
+                line.setAttribute('class', `connection-line ${className}`);
+                svg.appendChild(line);
+            }
+            
+            // Create a curved path between two specific points
+            function createCurvedPathFromPoints(fromPoint, toPoint, className, curveFactor = 0.15) {
+                const dx = toPoint.x - fromPoint.x;
+                const dy = toPoint.y - fromPoint.y;
+                
+                // Control point for the curve - offset perpendicular to the line
+                const cx = fromPoint.x + dx / 2;
+                const cy = fromPoint.y + dy / 2 - Math.abs(dx) * curveFactor;
+                
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const d = `M ${fromPoint.x} ${fromPoint.y} Q ${cx} ${cy} ${toPoint.x} ${toPoint.y}`;
+                path.setAttribute('d', d);
+                path.setAttribute('class', `connection-line ${className}`);
+                svg.appendChild(path);
+            }
+            
+            // EXPLICIT CONNECTION RULES FOR EACH CONNECTION TYPE
+            
+            // 1. ROUTER TO NODES - straight lines from router bottom-center to node top-center
+            if (isLayerExpanded('infrastructure')) {
+                const router = getNodeBox('router');
+                const n1 = getNodeBox('n1');
+                const n2 = getNodeBox('n2');
+                const n3 = getNodeBox('n3');
+                
+                if (router && n1) {
+                    createLineFromPoints(router.bottomCenter, n1.topCenter, 'connection-physical');
+                }
+                if (router && n2) {
+                    createLineFromPoints(router.bottomCenter, n2.topCenter, 'connection-physical');
+                }
+                if (router && n3) {
+                    createLineFromPoints(router.bottomCenter, n3.topCenter, 'connection-physical');
+                }
+            }
+            
+            // 2. NODES TO PODS - curved from node bottom to pod top
+            if (isLayerExpanded('infrastructure') && isLayerExpanded('overlay')) {
+                const n1 = getNodeBox('n1');
+                const n3 = getNodeBox('n3');
+                const pa = getNodeBox('pa');
+                const pb = getNodeBox('pb');
+                const pc = getNodeBox('pc');
+                const pd = getNodeBox('pd');
+                
+                // Node 1 to Pod A (first pod)
+                if (n1 && pa) {
+                    createCurvedPathFromPoints(n1.bottomCenter, pa.topCenter, 'connection-dashed', 0.1);
+                }
+                
+                // Node 1 to Pod B (second pod)
+                if (n1 && pb) {
+                    createCurvedPathFromPoints(n1.bottomCenter, pb.topCenter, 'connection-dashed', 0.1);
+                }
+                
+                // Node 3 to Pod C (third pod)
+                if (n3 && pc) {
+                    createCurvedPathFromPoints(n3.bottomCenter, pc.topCenter, 'connection-dashed', 0.1);
+                }
+                
+                // Node 3 to Pod D (fourth pod)
+                if (n3 && pd) {
+                    createCurvedPathFromPoints(n3.bottomCenter, pd.topCenter, 'connection-dashed', 0.1);
+                }
+            }
+            
+            // 3. POD-TO-POD - simple horizontal connections between adjacent pods
+            if (isLayerExpanded('overlay')) {
+                const pa = getNodeBox('pa');
+                const pb = getNodeBox('pb');
+                const pc = getNodeBox('pc');
+                const pd = getNodeBox('pd');
+                
+                // Pod A to Pod B (adjacent, horizontal)
+                if (pa && pb) {
+                    createLineFromPoints(pa.rightCenter, pb.leftCenter, 'connection-pod');
+                }
+                
+                // Pod B to Pod C (cross-node communication - shows pods can talk across nodes)
+                if (pb && pc) {
+                    createLineFromPoints(pb.rightCenter, pc.leftCenter, 'connection-pod');
+                }
+                
+                // Pod C to Pod D (adjacent, horizontal)
+                if (pc && pd) {
+                    createLineFromPoints(pc.rightCenter, pd.leftCenter, 'connection-pod');
+                }
+            }
+            
+            // 4. SERVICE CONNECTIONS - clean vertical connections
+            if (isLayerExpanded('overlay') && isLayerExpanded('virtual')) {
+                const pa = getNodeBox('pa');
+                const pb = getNodeBox('pb');
+                const pc = getNodeBox('pc');
+                const pd = getNodeBox('pd');
+                const s1 = getNodeBox('s1'); // backend-svc
+                const s2 = getNodeBox('s2'); // frontend-svc
+                
+                // Pod A and B connect to backend-svc
+                if (pa && s1) {
+                    createCurvedPathFromPoints(pa.bottomCenter, s1.topCenter, 'connection-service', 0.08);
+                }
+                if (pb && s1) {
+                    createCurvedPathFromPoints(pb.bottomCenter, s1.topCenter, 'connection-service', 0.08);
+                }
+                
+                // Pod C and D connect to frontend-svc
+                if (pc && s2) {
+                    createCurvedPathFromPoints(pc.bottomCenter, s2.topCenter, 'connection-service', 0.08);
+                }
+                if (pd && s2) {
+                    createCurvedPathFromPoints(pd.bottomCenter, s2.topCenter, 'connection-service', 0.08);
+                }
+            }
+            
+            // 5. INGRESS/ROUTE CONNECTIONS - external access to services
+            if (isLayerExpanded('virtual') && isLayerExpanded('ingress')) {
+                const route1 = getNodeBox('route1');
+                const s2 = getNodeBox('s2'); // frontend-svc
+                
+                // Route points to frontend-svc
+                if (route1 && s2) {
+                    createCurvedPathFromPoints(route1.topCenter, s2.bottomCenter, 'connection-ingress', 0.1);
+                }
+            }
+        }
+        
+        // Interactive hover effects
+        document.querySelectorAll('.node').forEach(node => {
+            node.addEventListener('mouseenter', function() {
+                this.classList.add('active');
+            });
+            
+            node.addEventListener('mouseleave', function() {
+                this.classList.remove('active');
+            });
+        });
+    </script>
+</body>
+</html>

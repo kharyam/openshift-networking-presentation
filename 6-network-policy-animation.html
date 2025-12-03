@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Policy in Action - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-frontend: #00B9E4;
+            --color-frontend-bg: rgba(0, 185, 228, 0.08);
+            --color-backend: #F0AB00;
+            --color-backend-bg: rgba(240, 171, 0, 0.08);
+            --color-database: #EC7A08;
+            --color-database-bg: rgba(236, 122, 8, 0.08);
+            --color-policy: #3E8635;
+            --color-policy-bg: rgba(62, 134, 53, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(62, 134, 53, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .btn {
+            padding: 14px 32px;
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            border: 2px solid var(--rh-red);
+            background: var(--rh-gray-90);
+            color: var(--text-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .btn:hover {
+            background: var(--rh-red);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.3);
+        }
+        
+        .btn.active {
+            background: var(--color-policy);
+            border-color: var(--color-policy);
+        }
+        
+        .status-indicator {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+            padding: 12px 24px;
+            background: var(--rh-gray-90);
+            border-radius: 8px;
+            border: 1px solid var(--rh-gray-70);
+        }
+        
+        .status-indicator .status-text {
+            font-weight: 600;
+        }
+        
+        .status-indicator.policy-active {
+            border-color: var(--color-policy);
+            color: var(--color-policy);
+        }
+        
+        /* Diagram */
+        .diagram-container {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 80px 60px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.5s both;
+            min-height: 500px;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: visible;
+        }
+        
+        .pods-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 80px;
+            justify-items: center;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .pod.frontend {
+            grid-column: 1 / 3;
+            grid-row: 1;
+        }
+        
+        .pod.backend {
+            grid-column: 1;
+            grid-row: 2;
+            justify-self: end;
+            margin-right: 40px;
+        }
+        
+        .pod.database {
+            grid-column: 2;
+            grid-row: 2;
+            justify-self: start;
+            margin-left: 40px;
+        }
+        
+        /* Pod styling */
+        .pod {
+            position: relative;
+            background: var(--rh-gray-80);
+            border-radius: 16px;
+            padding: 32px 28px;
+            border: 3px solid var(--rh-gray-70);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 220px;
+            text-align: center;
+        }
+        
+        .pod::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: var(--rh-gray-70);
+            transition: all 0.3s ease;
+            border-radius: 16px 16px 0 0;
+        }
+        
+        .pod:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .pod.frontend {
+            border-color: var(--color-frontend);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-frontend-bg) 100%);
+        }
+        
+        .pod.frontend::before {
+            background: var(--color-frontend);
+        }
+        
+        .pod.backend {
+            border-color: var(--color-backend);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-backend-bg) 100%);
+        }
+        
+        .pod.backend::before {
+            background: var(--color-backend);
+        }
+        
+        .pod.database {
+            border-color: var(--color-database);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-database-bg) 100%);
+        }
+        
+        .pod.database::before {
+            background: var(--color-database);
+        }
+        
+        .pod-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .pod-label {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .pod-namespace {
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        /* Network Policy Box */
+        .network-policy {
+            position: absolute;
+            top: 35%;
+            right: 60px;
+            transform: translateY(-50%);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-policy-bg) 100%);
+            border: 3px solid var(--color-policy);
+            border-radius: 16px;
+            padding: 24px 28px;
+            min-width: 280px;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 50;
+        }
+        
+        .network-policy.active {
+            opacity: 1;
+            transform: translateY(-50%) scale(1);
+        }
+        
+        .network-policy::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: var(--color-policy);
+            border-radius: 16px 16px 0 0;
+        }
+        
+        .network-policy-icon {
+            font-size: 36px;
+            margin-bottom: 12px;
+        }
+        
+        .network-policy-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--color-policy);
+            margin-bottom: 8px;
+        }
+        
+        .network-policy-rules {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        
+        .network-policy-rules strong {
+            color: var(--text-primary);
+            display: block;
+            margin-top: 8px;
+        }
+        
+        /* Connection styling */
+        .connection-line {
+            stroke-width: 4;
+            fill: none;
+            stroke-linecap: round;
+            transition: all 0.5s ease;
+        }
+        
+        .connection-allowed {
+            stroke: #3E8635;
+            stroke-dasharray: none;
+        }
+        
+        .connection-blocked {
+            stroke: var(--rh-red);
+            stroke-dasharray: 10 5;
+            opacity: 0.5;
+        }
+        
+        .connection-label {
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            transition: all 0.5s ease;
+        }
+        
+        .connection-label.allowed {
+            fill: #3E8635;
+        }
+        
+        .connection-label.blocked {
+            fill: var(--rh-red);
+        }
+        
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 40px;
+            padding: 24px;
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.8s both;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .legend-line {
+            width: 40px;
+            height: 4px;
+            border-radius: 2px;
+        }
+        
+        .legend-line.allowed {
+            background: #3E8635;
+        }
+        
+        .legend-line.blocked {
+            background: var(--rh-red);
+            opacity: 0.5;
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'Red Hat Mono', monospace;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.5;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Network Policy in Action</h1>
+            <div class="subtitle">Zero-Trust Micro-segmentation</div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" id="toggleBtn">Apply Network Policy 🛡️</button>
+            <div class="status-indicator" id="statusIndicator">
+                Status: <span class="status-text" id="statusText">All Traffic Allowed</span>
+            </div>
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#3E8635" />
+                    </marker>
+                    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#EE0000" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- Pods -->
+            <div class="pods-container">
+                <div class="pod frontend" data-pod="frontend">
+                    <div class="pod-icon">🌐</div>
+                    <div class="pod-label">Frontend Pod</div>
+                    <div class="pod-namespace">Namespace: frontend</div>
+                </div>
+                
+                <div class="pod backend" data-pod="backend">
+                    <div class="pod-icon">⚙️</div>
+                    <div class="pod-label">Backend Pod</div>
+                    <div class="pod-namespace">Namespace: backend</div>
+                </div>
+                
+                <div class="pod database" data-pod="database">
+                    <div class="pod-icon">🗄️</div>
+                    <div class="pod-label">Database Pod</div>
+                    <div class="pod-namespace">Namespace: database</div>
+                </div>
+            </div>
+            
+            <!-- Network Policy Box -->
+            <div class="network-policy" id="networkPolicy">
+                <div class="network-policy-icon">🛡️</div>
+                <div class="network-policy-title">NetworkPolicy</div>
+                <div class="network-policy-rules">
+                    <strong>Target:</strong> database namespace
+                    <strong>Rule:</strong> Allow ingress only from backend namespace
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-line allowed"></div>
+                <div class="legend-text">✅ Allowed Traffic</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line blocked"></div>
+                <div class="legend-text">❌ Blocked by Policy</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let policyActive = false;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            drawConnections();
+            setupToggle();
+            
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(drawConnections, 100);
+            });
+        });
+        
+        function setupToggle() {
+            const btn = document.getElementById('toggleBtn');
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const networkPolicy = document.getElementById('networkPolicy');
+            
+            btn.addEventListener('click', function() {
+                policyActive = !policyActive;
+                
+                if (policyActive) {
+                    btn.textContent = 'Remove Network Policy 🔓';
+                    btn.classList.add('active');
+                    statusText.textContent = 'Policy Enforced';
+                    statusIndicator.classList.add('policy-active');
+                    networkPolicy.classList.add('active');
+                } else {
+                    btn.textContent = 'Apply Network Policy 🛡️';
+                    btn.classList.remove('active');
+                    statusText.textContent = 'All Traffic Allowed';
+                    statusIndicator.classList.remove('policy-active');
+                    networkPolicy.classList.remove('active');
+                }
+                
+                drawConnections();
+            });
+        }
+        
+        function drawConnections() {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Clear existing connections (keep defs)
+            while (svg.childNodes.length > 1) {
+                svg.removeChild(svg.lastChild);
+            }
+            
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            function getPodCenter(podName) {
+                const element = document.querySelector(`[data-pod="${podName}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY },
+                    topCenter: { x: centerX, y: top },
+                    bottomCenter: { x: centerX, y: bottom }
+                };
+            }
+            
+            function createConnection(from, to, allowed) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', from.x);
+                line.setAttribute('y1', from.y);
+                line.setAttribute('x2', to.x);
+                line.setAttribute('y2', to.y);
+                line.setAttribute('class', `connection-line ${allowed ? 'connection-allowed' : 'connection-blocked'}`);
+                line.setAttribute('marker-end', `url(#arrowhead-${allowed ? 'green' : 'red'})`);
+                svg.appendChild(line);
+                
+                // Add label with horizontal offset to avoid line overlap
+                const midX = (from.x + to.x) / 2;
+                const midY = (from.y + to.y) / 2 - 15;
+                
+                // Determine horizontal offset - move labels AWAY from line center
+                // Only for diagonal connections, keep horizontal connections centered
+                let xOffset = 0;
+                if (Math.abs(from.y - to.y) > 50) { // Diagonal connection
+                    if (from.x < to.x) {
+                        xOffset = 40; // Line goes left-to-right, offset label right (away)
+                    } else if (from.x > to.x) {
+                        xOffset = -40; // Line goes right-to-left, offset label left (away)
+                    }
+                }
+                // Horizontal connections (backend to database) keep xOffset = 0
+                
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', midX + xOffset);
+                label.setAttribute('y', midY);
+                label.setAttribute('class', `connection-label ${allowed ? 'allowed' : 'blocked'}`);
+                label.textContent = allowed ? '✅ Allowed' : '❌ Blocked';
+                svg.appendChild(label);
+            }
+            
+            const frontend = getPodCenter('frontend');
+            const backend = getPodCenter('backend');
+            const database = getPodCenter('database');
+            
+            if (frontend && backend && database) {
+                // Frontend (top) bottom to Backend (bottom-left) top
+                createConnection(frontend.bottomCenter, backend.topCenter, true);
+                
+                // Frontend (top) bottom to Database (bottom-right) top - blocked when policy active
+                createConnection(frontend.bottomCenter, database.topCenter, !policyActive);
+                
+                // Backend (bottom-left) to Database (bottom-right) - always allowed
+                createConnection(backend.rightCenter, database.leftCenter, true);
+                
+                // Policy enforcement line (if active) - from bottom center of policy to right center of database
+                if (policyActive) {
+                    const policyBox = document.getElementById('networkPolicy');
+                    const policyRect = policyBox.getBoundingClientRect();
+                    const policyCenterX = policyRect.left - containerRect.left + policyRect.width / 2;
+                    const policyBottom = policyRect.bottom - containerRect.top;
+                    
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', policyCenterX);
+                    line.setAttribute('y1', policyBottom);
+                    line.setAttribute('x2', database.rightCenter.x);
+                    line.setAttribute('y2', database.rightCenter.y);
+                    line.setAttribute('stroke', 'var(--color-policy)');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('stroke-dasharray', '8 4');
+                    line.setAttribute('opacity', '0.6');
+                    svg.appendChild(line);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

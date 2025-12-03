@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Address Pools - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-node: #00B9E4;
+            --color-node-bg: rgba(0, 185, 228, 0.08);
+            --color-pod: #F0AB00;
+            --color-pod-bg: rgba(240, 171, 0, 0.08);
+            --color-service: #A18FFF;
+            --color-service-bg: rgba(161, 143, 255, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        /* Diagram */
+        .diagram-container {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.5s both;
+        }
+        
+        .diagram-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+        
+        /* Network pool styling */
+        .network-pool {
+            background: var(--rh-gray-80);
+            border: 3px solid var(--rh-gray-70);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .network-pool.node {
+            border-color: var(--color-node);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-node-bg) 100%);
+        }
+        
+        .network-pool.pod {
+            border-color: var(--color-pod);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-pod-bg) 100%);
+        }
+        
+        .network-pool.service {
+            border-color: var(--color-service);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-service-bg) 100%);
+        }
+        
+        .network-pool::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            border-radius: 16px 16px 0 0;
+        }
+        
+        .network-pool.node::before {
+            background: var(--color-node);
+        }
+        
+        .network-pool.pod::before {
+            background: var(--color-pod);
+        }
+        
+        .network-pool.service::before {
+            background: var(--color-service);
+        }
+        
+        .pool-header {
+            text-align: center;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--rh-gray-70);
+        }
+        
+        .pool-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        
+        .pool-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .pool-cidr {
+            font-family: 'Space Mono', monospace;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--rh-red);
+        }
+        
+        .pool-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+        
+        .allocation-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .allocation-item {
+            background: var(--rh-gray-90);
+            border: 2px solid var(--rh-gray-70);
+            border-radius: 8px;
+            padding: 12px 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .allocation-item:hover {
+            transform: translateX(4px);
+            border-color: var(--rh-red);
+        }
+        
+        .allocation-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        
+        .allocation-cidr {
+            font-family: 'Space Mono', monospace;
+            font-size: 13px;
+            color: var(--rh-red);
+            font-weight: 700;
+        }
+        
+        .allocation-detail {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        
+        /* Key points box */
+        .key-points {
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, rgba(238, 0, 0, 0.05) 100%);
+            border: 2px solid var(--rh-red);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 20px;
+        }
+        
+        .key-points-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--rh-red);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .key-points-title::before {
+            content: '💡';
+            font-size: 24px;
+        }
+        
+        .key-points-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .key-point {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .key-point::before {
+            content: '✓';
+            color: var(--rh-red);
+            font-weight: 700;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>IP Address Pools</h1>
+            <div class="subtitle">Comprehensive Network Allocation View</div>
+        </div>
+        
+        <div class="diagram-container">
+            <div class="diagram-layout">
+                <!-- Node Network Pool -->
+                <div class="network-pool node">
+                    <div class="pool-header">
+                        <div class="pool-icon">🖥️</div>
+                        <div class="pool-title">Node Network</div>
+                        <div class="pool-cidr">10.0.0.0/16</div>
+                        <div class="pool-description">Physical/virtual infrastructure addresses. These IPs are routable on the corporate network.</div>
+                    </div>
+                    
+                    <div class="allocation-list">
+                        <div class="allocation-item">
+                            <div class="allocation-label">Gateway</div>
+                            <div class="allocation-cidr">10.0.1.1</div>
+                            <div class="allocation-detail">Default route to external network</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Node 1</div>
+                            <div class="allocation-cidr">10.0.1.10</div>
+                            <div class="allocation-detail">Worker node physical interface</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Node 2</div>
+                            <div class="allocation-cidr">10.0.1.11</div>
+                            <div class="allocation-detail">Worker node physical interface</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Node 3</div>
+                            <div class="allocation-cidr">10.0.1.12</div>
+                            <div class="allocation-detail">Worker node physical interface</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Pod Network Pool -->
+                <div class="network-pool pod">
+                    <div class="pool-header">
+                        <div class="pool-icon">📦</div>
+                        <div class="pool-title">Pod Network</div>
+                        <div class="pool-cidr">10.128.0.0/14</div>
+                        <div class="pool-description">Overlay network for pod-to-pod communication. Each node gets a /23 subnet.</div>
+                    </div>
+                    
+                    <div class="allocation-list">
+                        <div class="allocation-item">
+                            <div class="allocation-label">Node 1 Pod Subnet</div>
+                            <div class="allocation-cidr">10.128.0.0/23</div>
+                            <div class="allocation-detail">510 usable IPs</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Example Pod on Node 1</div>
+                            <div class="allocation-cidr">10.128.0.5</div>
+                            <div class="allocation-detail">Ephemeral, changes on restart</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Node 2 Pod Subnet</div>
+                            <div class="allocation-cidr">10.128.2.0/23</div>
+                            <div class="allocation-detail">510 usable IPs</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Example Pod on Node 2</div>
+                            <div class="allocation-cidr">10.128.2.10</div>
+                            <div class="allocation-detail">Ephemeral, changes on restart</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">Node 3 Pod Subnet</div>
+                            <div class="allocation-cidr">10.128.4.0/23</div>
+                            <div class="allocation-detail">510 usable IPs</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Service Network Pool -->
+                <div class="network-pool service">
+                    <div class="pool-header">
+                        <div class="pool-icon">⚖️</div>
+                        <div class="pool-title">Service Network</div>
+                        <div class="pool-cidr">172.30.0.0/16</div>
+                        <div class="pool-description">Virtual IPs for stable service endpoints. Never assigned to physical interfaces.</div>
+                    </div>
+                    
+                    <div class="allocation-list">
+                        <div class="allocation-item">
+                            <div class="allocation-label">web-frontend Service</div>
+                            <div class="allocation-cidr">172.30.45.100</div>
+                            <div class="allocation-detail">Load balances to 3 frontend pods</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">api-backend Service</div>
+                            <div class="allocation-cidr">172.30.50.200</div>
+                            <div class="allocation-detail">Load balances to 5 API pods</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">database Service</div>
+                            <div class="allocation-cidr">172.30.60.55</div>
+                            <div class="allocation-detail">Load balances to 1 database pod</div>
+                        </div>
+                        
+                        <div class="allocation-item">
+                            <div class="allocation-label">kube-dns (CoreDNS)</div>
+                            <div class="allocation-cidr">172.30.0.10</div>
+                            <div class="allocation-detail">Cluster DNS resolution service</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Key Points -->
+            <div class="key-points">
+                <div class="key-points-title">Key Architectural Points</div>
+                <div class="key-points-list">
+                    <div class="key-point">
+                        <span><strong>No CIDR Overlap:</strong> Three completely separate address spaces prevent routing conflicts</span>
+                    </div>
+                    <div class="key-point">
+                        <span><strong>Pod IPs are Ephemeral:</strong> Pods get new IPs on restart - use Services for stability</span>
+                    </div>
+                    <div class="key-point">
+                        <span><strong>Service IPs Never Leave Cluster:</strong> Virtual IPs exist only in iptables/OVN rules</span>
+                    </div>
+                    <div class="key-point">
+                        <span><strong>Node IPs are Infrastructure:</strong> Routable on corporate network, used for management and ingress</span>
+                    </div>
+                    <div class="key-point">
+                        <span><strong>Per-Node Pod Subnets:</strong> Each node gets a /23 (510 IPs) from the pod network pool</span>
+                    </div>
+                    <div class="key-point">
+                        <span><strong>Overlay Network Routing:</strong> Pod traffic tunneled (Geneve) between nodes via node IPs</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

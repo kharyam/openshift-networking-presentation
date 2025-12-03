@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OVN-Kubernetes Architecture - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Layer colors */
+            --color-control: #3E8635; /* Green for control plane */
+            --color-control-bg: rgba(62, 134, 53, 0.08);
+            --color-logical: #F0AB00; /* Amber for logical layer */
+            --color-logical-bg: rgba(240, 171, 0, 0.08);
+            --color-physical: #EC7A08; /* Orange for physical layer */
+            --color-physical-bg: rgba(236, 122, 8, 0.08);
+            --color-data: #A18FFF; /* Purple for data plane */
+            --color-data-bg: rgba(161, 143, 255, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(62, 134, 53, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1800px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        .architecture-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: visible;
+        }
+        
+        /* Layer sections */
+        .layer-section {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px;
+            border: 2px solid var(--rh-gray-70);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .layer-section:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .section-header:hover {
+            opacity: 0.8;
+        }
+        
+        .expand-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: var(--rh-gray-80);
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        
+        .expand-icon::after {
+            content: '▼';
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+        
+        .layer-section.collapsed .expand-icon::after {
+            transform: rotate(-90deg);
+        }
+        
+        .layer-indicator {
+            width: 6px;
+            height: 40px;
+            border-radius: 3px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .section-title {
+            flex: 1;
+        }
+        
+        .section-title h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        
+        .section-title .layer-description {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        .layer-section.collapsed .section-header {
+            margin-bottom: 0;
+        }
+        
+        /* Control Plane styling */
+        .layer-section.control {
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, var(--color-control-bg) 100%);
+            border-color: var(--color-control);
+        }
+        
+        .control .layer-indicator {
+            background: linear-gradient(180deg, var(--color-control) 0%, rgba(62, 134, 53, 0.3) 100%);
+        }
+        
+        .control .section-title h2 {
+            color: var(--color-control);
+        }
+        
+        /* Node sections styling */
+        .layer-section.node {
+            background: linear-gradient(135deg, var(--rh-gray-90) 0%, rgba(0, 185, 228, 0.05) 100%);
+            border-color: #00B9E4;
+        }
+        
+        .node .layer-indicator {
+            background: linear-gradient(180deg, #00B9E4 0%, rgba(0, 185, 228, 0.3) 100%);
+        }
+        
+        .node .section-title h2 {
+            color: #00B9E4;
+        }
+        
+        /* Components grid */
+        .components-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            max-height: 1000px;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+        }
+        
+        .layer-section.collapsed .components-grid {
+            max-height: 0;
+            opacity: 0;
+        }
+        
+        /* Component boxes */
+        .component {
+            position: relative;
+            background: var(--rh-gray-80);
+            border-radius: 12px;
+            padding: 24px;
+            border: 2px solid var(--rh-gray-70);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--rh-gray-70);
+            transition: all 0.3s ease;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .component:hover {
+            transform: translateY(-2px);
+            border-color: var(--rh-red);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.2);
+        }
+        
+        /* Component type styling */
+        .component.control {
+            border-color: var(--color-control);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-control-bg) 100%);
+        }
+        
+        .component.control::before {
+            background: var(--color-control);
+        }
+        
+        .component.logical {
+            border-color: var(--color-logical);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-logical-bg) 100%);
+        }
+        
+        .component.logical::before {
+            background: var(--color-logical);
+        }
+        
+        .component.physical {
+            border-color: var(--color-physical);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-physical-bg) 100%);
+        }
+        
+        .component.physical::before {
+            background: var(--color-physical);
+        }
+        
+        .component.data {
+            border-color: var(--color-data);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-data-bg) 100%);
+        }
+        
+        .component.data::before {
+            background: var(--color-data);
+        }
+        
+        .component-label {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .component-description {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        
+        /* Connection styling */
+        .connection-line {
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+        }
+        
+        .connection-control {
+            stroke: var(--color-control);
+            stroke-width: 3;
+        }
+        
+        .connection-subnet {
+            stroke: var(--color-control);
+            stroke-width: 2;
+            stroke-dasharray: 8 4;
+            opacity: 0.5;
+        }
+        
+        .connection-flow {
+            stroke: var(--rh-red);
+            stroke-width: 3;
+        }
+        
+        .connection-data {
+            stroke: var(--color-data);
+            stroke-width: 3;
+            stroke-dasharray: 10 5;
+            animation: dashFlow 20s linear infinite;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -150;
+            }
+        }
+        
+        /* Tunnel connection */
+        .tunnel-badge {
+            position: absolute;
+            background: var(--color-data);
+            color: var(--rh-black);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 4px 12px rgba(161, 143, 255, 0.3);
+            animation: fadeIn 0.5s ease-out 1s both;
+        }
+        
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 40px;
+            padding: 24px;
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.6s both;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .legend-box {
+            width: 40px;
+            height: 24px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+        
+        .legend-box.control {
+            background: var(--color-control-bg);
+            border-color: var(--color-control);
+        }
+        
+        .legend-box.logical {
+            background: var(--color-logical-bg);
+            border-color: var(--color-logical);
+        }
+        
+        .legend-box.physical {
+            background: var(--color-physical-bg);
+            border-color: var(--color-physical);
+        }
+        
+        .legend-box.data {
+            background: var(--color-data-bg);
+            border-color: var(--color-data);
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'Red Hat Mono', monospace;
+        }
+        
+        /* Annotations */
+        .info-box {
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, rgba(238, 0, 0, 0.1) 100%);
+            border: 2px solid var(--rh-red);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 40px;
+            animation: fadeIn 1s ease-out 0.8s both;
+        }
+        
+        .info-box h3 {
+            color: var(--rh-red);
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+        
+        .info-box p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .components-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OVN-Kubernetes Architecture</h1>
+            <div class="subtitle">Network Control & Data Plane</div>
+        </div>
+        
+        <div class="architecture-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- Control Plane Layer -->
+            <div class="layer-section control collapsed" data-layer="control">
+                <div class="section-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="section-title">
+                        <h2>Control Plane</h2>
+                        <div class="layer-description">OpenShift 4.14+ Cluster-Wide</div>
+                    </div>
+                </div>
+                <div class="components-grid">
+                    <div class="component control" data-component="api">
+                        <div class="component-label">Kubernetes API Server</div>
+                        <div class="component-description">Central control plane - manages all cluster resources</div>
+                    </div>
+                    <div class="component control" data-component="cluster-manager">
+                        <div class="component-label">ovnkube-cluster-manager</div>
+                        <div class="component-description">Allocates pod subnet ranges to each node</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Node 1 -->
+            <div class="layer-section node collapsed" data-layer="node1">
+                <div class="section-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="section-title">
+                        <h2>Node 1</h2>
+                        <div class="layer-description">Per-Node Network Stack</div>
+                    </div>
+                </div>
+                <div class="components-grid">
+                    <div class="component control" data-component="ovnkube-controller-1">
+                        <div class="component-label">ovnkube-controller</div>
+                        <div class="component-description">Watches Kubernetes API and programs network policy</div>
+                    </div>
+                    <div class="component logical" data-component="nbdb-1">
+                        <div class="component-label">OVN Northbound DB</div>
+                        <div class="component-description">Logical network topology (pods, networks, ACLs)</div>
+                    </div>
+                    <div class="component physical" data-component="ovn-northd-1">
+                        <div class="component-label">ovn-northd</div>
+                        <div class="component-description">Translates logical → physical network flows</div>
+                    </div>
+                    <div class="component physical" data-component="sbdb-1">
+                        <div class="component-label">OVN Southbound DB</div>
+                        <div class="component-description">Physical bindings and flow programming</div>
+                    </div>
+                    <div class="component physical" data-component="ovn-controller-1">
+                        <div class="component-label">ovn-controller</div>
+                        <div class="component-description">Programs OpenFlow rules into OVS</div>
+                    </div>
+                    <div class="component data" data-component="ovs-1">
+                        <div class="component-label">Open vSwitch (br-int)</div>
+                        <div class="component-description">Data plane - actual packet forwarding</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Node 2 -->
+            <div class="layer-section node collapsed" data-layer="node2">
+                <div class="section-header">
+                    <div class="expand-icon"></div>
+                    <div class="layer-indicator"></div>
+                    <div class="section-title">
+                        <h2>Node 2</h2>
+                        <div class="layer-description">Per-Node Network Stack</div>
+                    </div>
+                </div>
+                <div class="components-grid">
+                    <div class="component control" data-component="ovnkube-controller-2">
+                        <div class="component-label">ovnkube-controller</div>
+                        <div class="component-description">Watches Kubernetes API and programs network policy</div>
+                    </div>
+                    <div class="component logical" data-component="nbdb-2">
+                        <div class="component-label">OVN Northbound DB</div>
+                        <div class="component-description">Logical network topology (pods, networks, ACLs)</div>
+                    </div>
+                    <div class="component physical" data-component="ovn-northd-2">
+                        <div class="component-label">ovn-northd</div>
+                        <div class="component-description">Translates logical → physical network flows</div>
+                    </div>
+                    <div class="component physical" data-component="sbdb-2">
+                        <div class="component-label">OVN Southbound DB</div>
+                        <div class="component-description">Physical bindings and flow programming</div>
+                    </div>
+                    <div class="component physical" data-component="ovn-controller-2">
+                        <div class="component-label">ovn-controller</div>
+                        <div class="component-description">Programs OpenFlow rules into OVS</div>
+                    </div>
+                    <div class="component data" data-component="ovs-2">
+                        <div class="component-label">Open vSwitch (br-int)</div>
+                        <div class="component-description">Data plane - actual packet forwarding</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h3>📊 How It Works</h3>
+            <p><strong>1. Control Plane:</strong> Kubernetes API Server receives pod/service creation requests. The cluster-manager allocates subnet ranges to nodes.</p>
+            <p><strong>2. Logical Layer (Amber):</strong> ovnkube-controller watches the API and writes logical network config to the Northbound DB (networks, routers, ACLs).</p>
+            <p><strong>3. Translation Layer (Orange):</strong> ovn-northd translates logical configuration into physical flows and stores them in the Southbound DB.</p>
+            <p><strong>4. Data Plane (Purple):</strong> ovn-controller reads the Southbound DB and programs OpenFlow rules into OVS, which forwards actual packets.</p>
+            <p><strong>5. Cross-Node Traffic:</strong> OVS bridges on different nodes communicate via Geneve tunnels for pod-to-pod traffic across nodes.</p>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box control"></div>
+                <div class="legend-text">Control Layer (Kubernetes API)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box logical"></div>
+                <div class="legend-text">Logical Network (Intent)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box physical"></div>
+                <div class="legend-text">Physical Translation</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box data"></div>
+                <div class="legend-text">Data Plane (Packet Forwarding)</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Setup collapsible sections
+        document.addEventListener('DOMContentLoaded', function() {
+            setupCollapsible();
+            drawConnections();
+            
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(drawConnections, 100);
+            });
+        });
+        
+        function setupCollapsible() {
+            document.querySelectorAll('.section-header').forEach(header => {
+                header.addEventListener('click', function() {
+                    const section = this.closest('.layer-section');
+                    section.classList.toggle('collapsed');
+                    
+                    setTimeout(() => {
+                        drawConnections();
+                    }, 500);
+                });
+            });
+        }
+        
+        function isLayerExpanded(layerName) {
+            const layer = document.querySelector(`[data-layer="${layerName}"]`);
+            return layer && !layer.classList.contains('collapsed');
+        }
+        
+        function drawConnections() {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.architecture-container');
+            
+            // Clear existing connections (keep defs)
+            while (svg.childNodes.length > 1) {
+                svg.removeChild(svg.lastChild);
+            }
+            
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            function getComponentBox(selector) {
+                const element = document.querySelector(`[data-component="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    topCenter: { x: centerX, y: top },
+                    bottomCenter: { x: centerX, y: bottom },
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY }
+                };
+            }
+            
+            function createLine(fromPoint, toPoint, className) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromPoint.x);
+                line.setAttribute('y1', fromPoint.y);
+                line.setAttribute('x2', toPoint.x);
+                line.setAttribute('y2', toPoint.y);
+                line.setAttribute('class', `connection-line ${className}`);
+                line.setAttribute('marker-end', 'url(#arrowhead)');
+                svg.appendChild(line);
+            }
+            
+            function createPath(fromPoint, toPoint, className) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const midY = (fromPoint.y + toPoint.y) / 2;
+                const d = `M ${fromPoint.x} ${fromPoint.y} L ${fromPoint.x} ${midY} L ${toPoint.x} ${midY} L ${toPoint.x} ${toPoint.y}`;
+                path.setAttribute('d', d);
+                path.setAttribute('class', `connection-line ${className}`);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('marker-end', 'url(#arrowhead)');
+                svg.appendChild(path);
+            }
+            
+            // Control plane to nodes - route from left of API to left of controllers
+            if (isLayerExpanded('control')) {
+                const api = getComponentBox('api');
+                const clusterManager = getComponentBox('cluster-manager');
+                
+                if (isLayerExpanded('node1') && api) {
+                    const controller1 = getComponentBox('ovnkube-controller-1');
+                    if (controller1) {
+                        // Route from left of API, clearly between node border and purple line
+                        const offset = 55; // Clear space between node border and purple (60px)
+                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        const d = `M ${api.leftCenter.x} ${api.leftCenter.y} L ${api.leftCenter.x - offset} ${api.leftCenter.y} L ${api.leftCenter.x - offset} ${controller1.leftCenter.y} L ${controller1.leftCenter.x} ${controller1.leftCenter.y}`;
+                        path.setAttribute('d', d);
+                        path.setAttribute('class', 'connection-line connection-control');
+                        path.setAttribute('fill', 'none');
+                        path.setAttribute('marker-end', 'url(#arrowhead)');
+                        svg.appendChild(path);
+                    }
+                    
+                    // Cluster-manager to controller (subnet assignment) - dashed, transparent
+                    if (clusterManager && controller1) {
+                        // Straight down from cluster-manager bottom to controller top
+                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        const midY = (clusterManager.bottomCenter.y + controller1.topCenter.y) / 2;
+                        const d = `M ${clusterManager.bottomCenter.x} ${clusterManager.bottomCenter.y} L ${clusterManager.bottomCenter.x} ${midY} L ${controller1.topCenter.x} ${midY} L ${controller1.topCenter.x} ${controller1.topCenter.y}`;
+                        path.setAttribute('d', d);
+                        path.setAttribute('class', 'connection-line connection-subnet');
+                        path.setAttribute('fill', 'none');
+                        svg.appendChild(path);
+                    }
+                }
+                
+                if (isLayerExpanded('node2') && api) {
+                    const controller2 = getComponentBox('ovnkube-controller-2');
+                    if (controller2) {
+                        // Route from left of API, clearly between node border and purple line
+                        const offset = 55; // Clear space between node border and purple (60px)
+                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        const d = `M ${api.leftCenter.x} ${api.leftCenter.y} L ${api.leftCenter.x - offset} ${api.leftCenter.y} L ${api.leftCenter.x - offset} ${controller2.leftCenter.y} L ${controller2.leftCenter.x} ${controller2.leftCenter.y}`;
+                        path.setAttribute('d', d);
+                        path.setAttribute('class', 'connection-line connection-control');
+                        path.setAttribute('fill', 'none');
+                        path.setAttribute('marker-end', 'url(#arrowhead)');
+                        svg.appendChild(path);
+                    }
+                    
+                    // Cluster-manager to controller (subnet assignment) - dashed, transparent
+                    if (clusterManager && controller2) {
+                        // Straight down from cluster-manager bottom to controller top
+                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        const midY = (clusterManager.bottomCenter.y + controller2.topCenter.y) / 2;
+                        const d = `M ${clusterManager.bottomCenter.x} ${clusterManager.bottomCenter.y} L ${clusterManager.bottomCenter.x} ${midY} L ${controller2.topCenter.x} ${midY} L ${controller2.topCenter.x} ${controller2.topCenter.y}`;
+                        path.setAttribute('d', d);
+                        path.setAttribute('class', 'connection-line connection-subnet');
+                        path.setAttribute('fill', 'none');
+                        svg.appendChild(path);
+                    }
+                }
+            }
+            
+            // Node 1 internal flow - straight vertical lines
+            if (isLayerExpanded('node1')) {
+                const controller1 = getComponentBox('ovnkube-controller-1');
+                const nbdb1 = getComponentBox('nbdb-1');
+                const northd1 = getComponentBox('ovn-northd-1');
+                const sbdb1 = getComponentBox('sbdb-1');
+                const ovnController1 = getComponentBox('ovn-controller-1');
+                const ovs1 = getComponentBox('ovs-1');
+                
+                // Simple vertical connections from left component to next in sequence
+                if (controller1 && nbdb1) {
+                    createLine(controller1.rightCenter, nbdb1.leftCenter, 'connection-flow');
+                }
+                if (nbdb1 && northd1) {
+                    createLine(nbdb1.rightCenter, northd1.leftCenter, 'connection-flow');
+                }
+                if (northd1 && sbdb1) {
+                    createLine(northd1.rightCenter, sbdb1.leftCenter, 'connection-flow');
+                }
+                if (sbdb1 && ovnController1) {
+                    createLine(sbdb1.rightCenter, ovnController1.leftCenter, 'connection-flow');
+                }
+                if (ovnController1 && ovs1) {
+                    // Route to the right border center of OVS (matching Node 2)
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const d = `M ${ovnController1.bottomCenter.x} ${ovnController1.bottomCenter.y} L ${ovnController1.bottomCenter.x} ${ovs1.rightCenter.y} L ${ovs1.rightCenter.x} ${ovs1.rightCenter.y}`;
+                    path.setAttribute('d', d);
+                    path.setAttribute('class', 'connection-line connection-flow');
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('marker-end', 'url(#arrowhead)');
+                    svg.appendChild(path);
+                }
+            }
+            
+            // Node 2 internal flow - same pattern
+            if (isLayerExpanded('node2')) {
+                const controller2 = getComponentBox('ovnkube-controller-2');
+                const nbdb2 = getComponentBox('nbdb-2');
+                const northd2 = getComponentBox('ovn-northd-2');
+                const sbdb2 = getComponentBox('sbdb-2');
+                const ovnController2 = getComponentBox('ovn-controller-2');
+                const ovs2 = getComponentBox('ovs-2');
+                
+                if (controller2 && nbdb2) {
+                    createLine(controller2.rightCenter, nbdb2.leftCenter, 'connection-flow');
+                }
+                if (nbdb2 && northd2) {
+                    createLine(nbdb2.rightCenter, northd2.leftCenter, 'connection-flow');
+                }
+                if (northd2 && sbdb2) {
+                    createLine(northd2.rightCenter, sbdb2.leftCenter, 'connection-flow');
+                }
+                if (sbdb2 && ovnController2) {
+                    createLine(sbdb2.rightCenter, ovnController2.leftCenter, 'connection-flow');
+                }
+                if (ovnController2 && ovs2) {
+                    // Route to the right border center of OVS
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const d = `M ${ovnController2.bottomCenter.x} ${ovnController2.bottomCenter.y} L ${ovnController2.bottomCenter.x} ${ovs2.rightCenter.y} L ${ovs2.rightCenter.x} ${ovs2.rightCenter.y}`;
+                    path.setAttribute('d', d);
+                    path.setAttribute('class', 'connection-line connection-flow');
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('marker-end', 'url(#arrowhead)');
+                    svg.appendChild(path);
+                }
+            }
+            
+            // Data plane tunnel - segmented line from left of OVS1 to left of OVS2
+            if (isLayerExpanded('node1') && isLayerExpanded('node2')) {
+                const ovs1 = getComponentBox('ovs-1');
+                const ovs2 = getComponentBox('ovs-2');
+                
+                if (ovs1 && ovs2) {
+                    // Route out left, down, then right to left border of OVS2
+                    const offset = 60; // How far left to go
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const d = `M ${ovs1.leftCenter.x} ${ovs1.leftCenter.y} L ${ovs1.leftCenter.x - offset} ${ovs1.leftCenter.y} L ${ovs1.leftCenter.x - offset} ${ovs2.leftCenter.y} L ${ovs2.leftCenter.x} ${ovs2.leftCenter.y}`;
+                    path.setAttribute('d', d);
+                    path.setAttribute('class', 'connection-line connection-data');
+                    path.setAttribute('fill', 'none');
+                    svg.appendChild(path);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

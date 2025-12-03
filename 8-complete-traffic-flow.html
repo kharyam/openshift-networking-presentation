@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Traffic Flow - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-client: #F0AB00;
+            --color-client-bg: rgba(240, 171, 0, 0.08);
+            --color-dns: #A18FFF;
+            --color-dns-bg: rgba(161, 143, 255, 0.08);
+            --color-router: #00B9E4;
+            --color-router-bg: rgba(0, 185, 228, 0.08);
+            --color-route: #EC7A08;
+            --color-route-bg: rgba(236, 122, 8, 0.08);
+            --color-service: #A18FFF;
+            --color-service-bg: rgba(161, 143, 255, 0.08);
+            --color-pod: #F0AB00;
+            --color-pod-bg: rgba(240, 171, 0, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 40px;
+            animation: fadeIn 1s ease-out 0.3s both;
+        }
+        
+        .btn {
+            padding: 14px 32px;
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            border: 2px solid var(--rh-red);
+            background: var(--rh-gray-90);
+            color: var(--text-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .btn:hover:not(:disabled) {
+            background: var(--rh-red);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.3);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .step-indicator {
+            text-align: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+            min-height: 60px;
+        }
+        
+        .step-indicator .current-step {
+            color: var(--rh-red);
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        .step-description {
+            font-size: 16px;
+            color: var(--text-primary);
+            margin-top: 8px;
+        }
+        
+        /* Diagram */
+        .diagram-container {
+            position: relative;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            padding: 40px 40px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.5s both;
+            min-height: 650px;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: visible;
+        }
+        
+        .diagram-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* Layer sections */
+        .layer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 80px;
+            flex-wrap: wrap;
+            position: relative;
+        }
+        
+        .layer.bordered {
+            background: var(--rh-gray-80);
+            border: 2px solid var(--rh-gray-70);
+            border-radius: 16px;
+            padding: 20px 30px 20px 140px;
+            margin-bottom: 10px;
+        }
+        
+        .layer-title {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            writing-mode: horizontal-tb;
+            text-align: center;
+            width: 100px;
+        }
+        
+        /* Component styling */
+        .component {
+            position: relative;
+            background: var(--rh-gray-80);
+            border-radius: 12px;
+            padding: 20px 18px;
+            border: 3px solid var(--rh-gray-70);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: center;
+            min-width: 200px;
+            opacity: 0.5;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--rh-gray-70);
+            transition: all 0.3s ease;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .component.active {
+            opacity: 1;
+            border-color: var(--rh-red);
+            box-shadow: 0 0 30px rgba(238, 0, 0, 0.4);
+            transform: scale(1.05);
+        }
+        
+        /* Component type styling */
+        .component.client {
+            border-color: var(--color-client);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-client-bg) 100%);
+        }
+        
+        .component.client::before {
+            background: var(--color-client);
+        }
+        
+        .component.dns {
+            border-color: var(--color-dns);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-dns-bg) 100%);
+        }
+        
+        .component.dns::before {
+            background: var(--color-dns);
+        }
+        
+        .component.router {
+            border-color: var(--color-router);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-router-bg) 100%);
+        }
+        
+        .component.router::before {
+            background: var(--color-router);
+        }
+        
+        .component.route {
+            border-color: var(--color-route);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-route-bg) 100%);
+        }
+        
+        .component.route::before {
+            background: var(--color-route);
+        }
+        
+        .component.service {
+            border-color: var(--color-service);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-service-bg) 100%);
+        }
+        
+        .component.service::before {
+            background: var(--color-service);
+        }
+        
+        .component.pod {
+            border-color: var(--color-pod);
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, var(--color-pod-bg) 100%);
+        }
+        
+        .component.pod::before {
+            background: var(--color-pod);
+        }
+        
+        .component-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+        
+        .component-label {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+        }
+        
+        .component-detail {
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            color: var(--rh-red);
+            font-weight: 700;
+        }
+        
+        /* Connection styling */
+        .connection-line {
+            stroke: var(--rh-red);
+            stroke-width: 4;
+            fill: none;
+            stroke-linecap: round;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .connection-line.visible {
+            opacity: 1;
+            stroke-dasharray: 10 5;
+            animation: dashFlow 2s linear infinite;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -150;
+            }
+        }
+        
+        .connection-label-bg {
+            fill: var(--rh-gray-90);
+            stroke: var(--rh-red);
+            stroke-width: 1;
+            rx: 4;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .connection-label-bg.visible {
+            opacity: 1;
+        }
+        
+        .connection-label {
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            fill: var(--rh-red);
+            text-anchor: middle;
+            dominant-baseline: middle;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .connection-label.visible {
+            opacity: 1;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Complete Traffic Flow</h1>
+            <div class="subtitle">External to Pod - Full Request Path</div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" id="prevBtn" disabled>← Previous</button>
+            <button class="btn" id="resetBtn">Reset</button>
+            <button class="btn" id="nextBtn">Next →</button>
+        </div>
+        
+        <div class="step-indicator">
+            <div>Step <span class="current-step" id="stepNumber">0</span> of <span id="totalSteps">6</span></div>
+            <div class="step-description" id="stepDescription">Click Next to start the traffic flow</div>
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <div class="diagram-layout">
+                <!-- External Layer -->
+                <div class="layer">
+                    <div class="layer-title">External</div>
+                    <div class="component client" data-component="client">
+                        <div class="component-icon">👤</div>
+                        <div class="component-label">External Client</div>
+                        <div class="component-detail">internet</div>
+                    </div>
+                    
+                    <div class="component dns" data-component="dns">
+                        <div class="component-icon">🌐</div>
+                        <div class="component-label">DNS</div>
+                        <div class="component-detail">*.apps.example.com</div>
+                    </div>
+                </div>
+                
+                <!-- Ingress Layer -->
+                <div class="layer bordered">
+                    <div class="layer-title">Ingress Layer</div>
+                    <div class="component router" data-component="router1">
+                        <div class="component-icon">🔀</div>
+                        <div class="component-label">Router Pod 1</div>
+                        <div class="component-detail">HAProxy</div>
+                    </div>
+                    
+                    <div class="component router" data-component="router2">
+                        <div class="component-icon">🔀</div>
+                        <div class="component-label">Router Pod 2</div>
+                        <div class="component-detail">HAProxy</div>
+                    </div>
+                </div>
+                
+                <!-- Service Layer -->
+                <div class="layer bordered">
+                    <div class="layer-title">Service Layer</div>
+                    <div class="component route" data-component="route">
+                        <div class="component-icon">📋</div>
+                        <div class="component-label">OpenShift Route</div>
+                        <div class="component-detail">my-app.apps.example.com</div>
+                    </div>
+                    
+                    <div class="component service" data-component="service">
+                        <div class="component-icon">⚖️</div>
+                        <div class="component-label">Service</div>
+                        <div class="component-detail">my-app-service<br/>172.30.45.100:8080</div>
+                    </div>
+                </div>
+                
+                <!-- Pod Layer -->
+                <div class="layer bordered">
+                    <div class="layer-title">Pod Layer</div>
+                    <div class="component pod" data-component="pod1">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 1</div>
+                        <div class="component-detail">10.128.1.5:8080</div>
+                    </div>
+                    
+                    <div class="component pod" data-component="pod2">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 2</div>
+                        <div class="component-detail">10.128.2.10:8080</div>
+                    </div>
+                    
+                    <div class="component pod" data-component="pod3">
+                        <div class="component-icon">📦</div>
+                        <div class="component-label">Pod 3</div>
+                        <div class="component-detail">10.128.3.15:8080</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const steps = [
+            {
+                description: "Click Next to start - Client resolves hostname via DNS",
+                active: ['client', 'dns'],
+                connections: [
+                    { from: 'client', to: 'dns', label: '1. Resolve hostname', useUpper: true }
+                ]
+            },
+            {
+                description: "DNS returns Router IPs to client",
+                active: ['client', 'dns'],
+                connections: [
+                    { from: 'dns', to: 'client', label: '2. Returns Router IPs', useLower: true }
+                ]
+            },
+            {
+                description: "Client sends HTTPS request to Router",
+                active: ['client', 'router1', 'router2'],
+                connections: [
+                    { from: 'client', to: 'router1', label: '3. HTTPS Request', centerOnLine: true }
+                ]
+            },
+            {
+                description: "Router matches hostname to Route",
+                active: ['router1', 'route'],
+                connections: [
+                    { from: 'router1', to: 'route', label: '4. Match Route', centerOnLine: true }
+                ]
+            },
+            {
+                description: "Route proxies to Service VIP",
+                active: ['route', 'service'],
+                connections: [
+                    { from: 'route', to: 'service', label: '5. Proxy to Service VIP' }
+                ]
+            },
+            {
+                description: "Service load balances to backend pods",
+                active: ['service', 'pod1', 'pod2', 'pod3'],
+                connections: [
+                    { from: 'service', to: 'pod1', label: null },
+                    { from: 'service', to: 'pod2', label: null },
+                    { from: 'service', to: 'pod3', label: null }
+                ],
+                spanLabel: { text: '6. Load Balance', connections: 3 }
+            }
+        ];
+        
+        let currentStep = 0;
+        const totalSteps = steps.length;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('totalSteps').textContent = totalSteps;
+            setupControls();
+            showStep(0); // Show step 0 with client-dns connection
+        });
+        
+        function setupControls() {
+            document.getElementById('nextBtn').addEventListener('click', () => {
+                if (currentStep < totalSteps - 1) {
+                    currentStep++;
+                    showStep(currentStep);
+                }
+            });
+            
+            document.getElementById('prevBtn').addEventListener('click', () => {
+                if (currentStep > 0) {
+                    currentStep--;
+                    showStep(currentStep);
+                }
+            });
+            
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                currentStep = 0;
+                showStep(currentStep);
+            });
+            
+            // Keyboard navigation
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' && currentStep < totalSteps - 1) {
+                    currentStep++;
+                    showStep(currentStep);
+                } else if (e.key === 'ArrowLeft' && currentStep > 0) {
+                    currentStep--;
+                    showStep(currentStep);
+                }
+            });
+        }
+        
+        function showStep(stepIndex) {
+            const step = steps[stepIndex];
+            
+            // Update step indicator
+            document.getElementById('stepNumber').textContent = stepIndex + 1;
+            document.getElementById('stepDescription').textContent = step.description;
+            
+            // Update button states
+            document.getElementById('prevBtn').disabled = stepIndex === 0;
+            document.getElementById('nextBtn').disabled = stepIndex === totalSteps - 1;
+            
+            // Update component active states
+            document.querySelectorAll('.component').forEach(comp => {
+                const compName = comp.dataset.component;
+                if (step.active.includes(compName)) {
+                    comp.classList.add('active');
+                } else {
+                    comp.classList.remove('active');
+                }
+            });
+            
+            // Draw connections
+            drawConnections(step.connections);
+        }
+        
+        function drawConnections(connections) {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Don't clear connections - keep accumulating them
+            // Clear only on step 0
+            if (currentStep === 0) {
+                while (svg.childNodes.length > 1) {
+                    svg.removeChild(svg.lastChild);
+                }
+            }
+            
+            if (!connections) return;
+            
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            function getComponentBox(selector) {
+                const element = document.querySelector(`[data-component="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                const height = rect.height;
+                
+                return {
+                    topCenter: { x: centerX, y: top },
+                    bottomCenter: { x: centerX, y: bottom },
+                    leftCenter: { x: left, y: centerY },
+                    rightCenter: { x: right, y: centerY },
+                    // Additional connection points at 25% and 75% height
+                    leftUpper: { x: left, y: top + height * 0.25 },
+                    rightUpper: { x: right, y: top + height * 0.25 },
+                    leftLower: { x: left, y: top + height * 0.75 },
+                    rightLower: { x: right, y: top + height * 0.75 }
+                };
+            }
+            
+            const linePoints = []; // Store line points for span label
+            
+            connections.forEach(conn => {
+                const from = getComponentBox(conn.from);
+                const to = getComponentBox(conn.to);
+                
+                if (!from || !to) return;
+                
+                // Determine connection points
+                let fromPoint, toPoint;
+                
+                // Check if this connection should use upper or lower points
+                if (conn.useUpper) {
+                    // Use upper 25% points for step 1
+                    if (from.rightUpper.x < to.leftUpper.x) {
+                        fromPoint = from.rightUpper;
+                        toPoint = to.leftUpper;
+                    } else {
+                        fromPoint = from.leftUpper;
+                        toPoint = to.rightUpper;
+                    }
+                } else if (conn.useLower) {
+                    // Use lower 75% points for step 2
+                    if (from.rightLower.x < to.leftLower.x) {
+                        fromPoint = from.rightLower;
+                        toPoint = to.leftLower;
+                    } else {
+                        fromPoint = from.leftLower;
+                        toPoint = to.rightLower;
+                    }
+                } else {
+                    // Default behavior for other connections
+                    if (from.bottomCenter.y < to.topCenter.y) {
+                        // Vertical connection (from above to below)
+                        fromPoint = from.bottomCenter;
+                        toPoint = to.topCenter;
+                    } else if (from.topCenter.y > to.bottomCenter.y) {
+                        // Vertical connection (from below to above)
+                        fromPoint = from.topCenter;
+                        toPoint = to.bottomCenter;
+                    } else {
+                        // Horizontal connection
+                        if (from.rightCenter.x < to.leftCenter.x) {
+                            fromPoint = from.rightCenter;
+                            toPoint = to.leftCenter;
+                        } else {
+                            fromPoint = from.leftCenter;
+                            toPoint = to.rightCenter;
+                        }
+                    }
+                }
+                
+                // Store line points for span label
+                linePoints.push({ from: fromPoint, to: toPoint });
+                
+                // Create line
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromPoint.x);
+                line.setAttribute('y1', fromPoint.y);
+                line.setAttribute('x2', toPoint.x);
+                line.setAttribute('y2', toPoint.y);
+                line.setAttribute('class', 'connection-line visible');
+                line.setAttribute('marker-end', 'url(#arrowhead)');
+                svg.appendChild(line);
+                
+                // Add individual label if present
+                if (conn.label) {
+                    const midX = (fromPoint.x + toPoint.x) / 2;
+                    const midY = (fromPoint.y + toPoint.y) / 2;
+                    
+                    // Position label based on centerOnLine flag
+                    let labelY = conn.centerOnLine ? midY : midY - 25;
+                    
+                    const padding = 8;
+                    const textWidth = conn.label.length * 7.5 + padding * 2;
+                    const textHeight = 22;
+                    
+                    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    bgRect.setAttribute('x', midX - textWidth / 2);
+                    bgRect.setAttribute('y', labelY - textHeight / 2);
+                    bgRect.setAttribute('width', textWidth);
+                    bgRect.setAttribute('height', textHeight);
+                    bgRect.setAttribute('class', 'connection-label-bg visible');
+                    svg.appendChild(bgRect);
+                    
+                    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    label.setAttribute('x', midX);
+                    label.setAttribute('y', labelY);
+                    label.setAttribute('class', 'connection-label visible');
+                    label.textContent = conn.label;
+                    svg.appendChild(label);
+                }
+            });
+            
+            // Add span label if present in current step
+            const step = steps[currentStep];
+            if (step.spanLabel && linePoints.length > 0) {
+                // Calculate the horizontal center between the service and the middle pod
+                // Weight it more toward the pods (60% pods, 40% service)
+                const firstLine = linePoints[0];
+                const lastLine = linePoints[linePoints.length - 1];
+                
+                // Average Y position
+                const avgY = linePoints.reduce((sum, lp) => sum + (lp.from.y + lp.to.y) / 2, 0) / linePoints.length;
+                
+                // Center X weighted toward pods
+                const fromX = firstLine.from.x;
+                const avgToX = linePoints.reduce((sum, lp) => sum + lp.to.x, 0) / linePoints.length;
+                const centerX = fromX * 0.4 + avgToX * 0.6;
+                
+                const labelY = avgY - 25;
+                const padding = 8;
+                const textWidth = step.spanLabel.text.length * 7.5 + padding * 2;
+                const textHeight = 22;
+                
+                const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                bgRect.setAttribute('x', centerX - textWidth / 2);
+                bgRect.setAttribute('y', labelY - textHeight / 2);
+                bgRect.setAttribute('width', textWidth);
+                bgRect.setAttribute('height', textHeight);
+                bgRect.setAttribute('class', 'connection-label-bg visible');
+                svg.appendChild(bgRect);
+                
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', centerX);
+                label.setAttribute('y', labelY);
+                label.setAttribute('class', 'connection-label visible');
+                label.textContent = step.spanLabel.text;
+                svg.appendChild(label);
+            }
+        }
+        
+        // Redraw on resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (currentStep > 0) {
+                    showStep(currentStep);
+                }
+            }, 250);
+        });
+    </script>
+</body>
+</html>

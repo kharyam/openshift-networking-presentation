@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodePort Traffic Flow - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Red+Hat+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Red Hat Brand Colors */
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            --rh-gray-10: #F0F0F0;
+            
+            /* Component colors */
+            --color-client: #F0AB00;
+            --color-client-bg: rgba(240, 171, 0, 0.08);
+            --color-node: #00B9E4;
+            --color-node-bg: rgba(0, 185, 228, 0.08);
+            --color-service: #A18FFF;
+            --color-service-bg: rgba(161, 143, 255, 0.08);
+            --color-pod: #F0AB00;
+            --color-pod-bg: rgba(240, 171, 0, 0.08);
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        /* Background effects */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(238, 0, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 185, 228, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        .diagram-container {
+            position: relative;
+            display: flex;
+            gap: 40px;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 1s ease-out 0.3s both;
+            padding: 60px 40px;
+            background: var(--rh-gray-90);
+            border-radius: 20px;
+            border: 1px solid var(--rh-gray-70);
+            min-height: 600px;
+        }
+        
+        .connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            overflow: visible;
+        }
+        
+        /* Component groups */
+        .component-group {
+            position: relative;
+            background: var(--rh-gray-80);
+            border-radius: 16px;
+            padding: 32px 24px;
+            border: 2px solid var(--rh-gray-70);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+        }
+        
+        .component-group:hover {
+            transform: translateY(-4px);
+            border-color: var(--rh-gray-50);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .group-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .group-header:hover {
+            opacity: 0.8;
+        }
+        
+        .expand-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: var(--rh-gray-70);
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        
+        .expand-icon::after {
+            content: '▼';
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+        
+        .component-group.collapsed .expand-icon::after {
+            transform: rotate(-90deg);
+        }
+        
+        .group-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        
+        .component-group.collapsed .group-header {
+            margin-bottom: 0;
+        }
+        
+        .components {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: 1000px;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+        }
+        
+        .component-group.collapsed .components {
+            max-height: 0;
+            opacity: 0;
+        }
+        
+        /* Component boxes */
+        .component {
+            position: relative;
+            background: var(--rh-gray-70);
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid var(--rh-gray-50);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            min-width: 200px;
+        }
+        
+        .component::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--rh-gray-50);
+            transition: all 0.3s ease;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .component:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(238, 0, 0, 0.2);
+        }
+        
+        /* Client styling */
+        .component.client {
+            border-color: var(--color-client);
+            background: linear-gradient(135deg, var(--rh-gray-70) 0%, var(--color-client-bg) 100%);
+        }
+        
+        .component.client::before {
+            background: var(--color-client);
+        }
+        
+        /* Node styling */
+        .component.node {
+            border-color: var(--color-node);
+            background: linear-gradient(135deg, var(--rh-gray-70) 0%, var(--color-node-bg) 100%);
+        }
+        
+        .component.node::before {
+            background: var(--color-node);
+        }
+        
+        .component.node.active {
+            border-color: var(--rh-red);
+            box-shadow: 0 0 30px rgba(238, 0, 0, 0.4);
+        }
+        
+        /* Service styling */
+        .component.service {
+            border-color: var(--color-service);
+            background: linear-gradient(135deg, var(--rh-gray-70) 0%, var(--color-service-bg) 100%);
+        }
+        
+        .component.service::before {
+            background: var(--color-service);
+        }
+        
+        /* Pod styling */
+        .component.pod {
+            border-color: var(--color-pod);
+            background: linear-gradient(135deg, var(--rh-gray-70) 0%, var(--color-pod-bg) 100%);
+        }
+        
+        .component.pod::before {
+            background: var(--color-pod);
+        }
+        
+        .component-label {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .component-detail {
+            font-family: 'Space Mono', monospace;
+            font-size: 13px;
+            color: var(--rh-red);
+            font-weight: 700;
+        }
+        
+        .component-type {
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        /* Connection styling */
+        .connection-line {
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+        }
+        
+        .connection-external {
+            stroke: var(--rh-red);
+            stroke-width: 4;
+        }
+        
+        .connection-internal {
+            stroke: var(--color-node);
+            stroke-width: 3;
+            stroke-dasharray: 10 5;
+            animation: dashFlow 20s linear infinite;
+        }
+        
+        .connection-loadbalance {
+            stroke: var(--color-service);
+            stroke-width: 3;
+            stroke-dasharray: 10 5;
+            animation: dashFlow 15s linear infinite;
+        }
+        
+        @keyframes dashFlow {
+            to {
+                stroke-dashoffset: -150;
+            }
+        }
+        
+        /* Connection labels */
+        .connection-label-bg {
+            fill: var(--rh-gray-90);
+            stroke: var(--rh-red);
+            stroke-width: 1;
+            rx: 4;
+        }
+        
+        .connection-label {
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            fill: var(--rh-red);
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+        
+        /* Legend */
+        .legend {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 40px;
+            padding: 24px;
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            border: 1px solid var(--rh-gray-70);
+            animation: fadeIn 1s ease-out 0.6s both;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .legend-line {
+            width: 40px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        
+        .legend-line.external {
+            background: var(--rh-red);
+        }
+        
+        .legend-line.internal {
+            background: var(--color-node);
+        }
+        
+        .legend-line.loadbalance {
+            background: var(--color-service);
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: 'Red Hat Mono', monospace;
+        }
+        
+        /* Annotations */
+        .annotation {
+            position: absolute;
+            background: linear-gradient(135deg, var(--rh-gray-80) 0%, rgba(238, 0, 0, 0.1) 100%);
+            border: 2px solid var(--rh-red);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'Red Hat Mono', monospace;
+            font-size: 12px;
+            color: var(--text-primary);
+            line-height: 1.6;
+            max-width: 250px;
+            box-shadow: 0 4px 12px rgba(238, 0, 0, 0.2);
+            animation: fadeIn 0.5s ease-out 0.8s both;
+        }
+        
+        .annotation strong {
+            color: var(--rh-red);
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .diagram-container {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>NodePort Traffic Flow</h1>
+            <div class="subtitle">External Access via Node Port</div>
+        </div>
+        
+        <div class="diagram-container">
+            <!-- SVG Connections Layer -->
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--rh-red)" />
+                    </marker>
+                    <marker id="arrowhead-blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--color-node)" />
+                    </marker>
+                    <marker id="arrowhead-purple" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="var(--color-service)" />
+                    </marker>
+                </defs>
+            </svg>
+            
+            <!-- External Client -->
+            <div class="component-group collapsed" data-group="client">
+                <div class="group-header">
+                    <div class="expand-icon"></div>
+                    <div class="group-title">External Client</div>
+                </div>
+                <div class="components">
+                    <div class="component client" data-component="client">
+                        <div class="component-label">External Client</div>
+                        <div class="component-type">Outside Cluster</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Nodes Group -->
+            <div class="component-group collapsed" data-group="nodes">
+                <div class="group-header">
+                    <div class="expand-icon"></div>
+                    <div class="group-title">Cluster Nodes</div>
+                </div>
+                <div class="components">
+                    <div class="component node" data-component="node1">
+                        <div class="component-label">Node 1</div>
+                        <div class="component-detail">10.0.1.10:30080</div>
+                        <div class="component-type">NodePort</div>
+                    </div>
+                    <div class="component node active" data-component="node2">
+                        <div class="component-label">Node 2</div>
+                        <div class="component-detail">10.0.1.11:30080</div>
+                        <div class="component-type">NodePort (Target)</div>
+                    </div>
+                    <div class="component node" data-component="node3">
+                        <div class="component-label">Node 3</div>
+                        <div class="component-detail">10.0.1.12:30080</div>
+                        <div class="component-type">NodePort</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Service VIP -->
+            <div class="component-group collapsed" data-group="service">
+                <div class="group-header">
+                    <div class="expand-icon"></div>
+                    <div class="group-title">Service</div>
+                </div>
+                <div class="components">
+                    <div class="component service" data-component="service">
+                        <div class="component-label">Service VIP</div>
+                        <div class="component-detail">172.30.45.100:8080</div>
+                        <div class="component-type">ClusterIP</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pods Group -->
+            <div class="component-group collapsed" data-group="pods">
+                <div class="group-header">
+                    <div class="expand-icon"></div>
+                    <div class="group-title">Backend Pods</div>
+                </div>
+                <div class="components">
+                    <div class="component pod" data-component="pod1">
+                        <div class="component-label">Pod 1</div>
+                        <div class="component-detail">10.128.1.5:8080</div>
+                        <div class="component-type">Backend</div>
+                    </div>
+                    <div class="component pod" data-component="pod2">
+                        <div class="component-label">Pod 2</div>
+                        <div class="component-detail">10.128.2.10:8080</div>
+                        <div class="component-type">Backend</div>
+                    </div>
+                    <div class="component pod" data-component="pod3">
+                        <div class="component-label">Pod 3</div>
+                        <div class="component-detail">10.128.3.15:8080</div>
+                        <div class="component-type">Backend</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-line external"></div>
+                <div class="legend-text">External Traffic (Any Node IP:30080)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line internal"></div>
+                <div class="legend-text">Internal Routing (iptables/OVN)</div>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line loadbalance"></div>
+                <div class="legend-text">Load Balancing</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Wait for DOM to load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupCollapsible();
+            drawConnections();
+            
+            // Redraw on window resize
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(drawConnections, 100);
+            });
+        });
+        
+        function setupCollapsible() {
+            document.querySelectorAll('.group-header').forEach(header => {
+                header.addEventListener('click', function() {
+                    const group = this.closest('.component-group');
+                    group.classList.toggle('collapsed');
+                    
+                    // Redraw connections after animation completes
+                    setTimeout(() => {
+                        drawConnections();
+                    }, 500);
+                });
+            });
+        }
+        
+        function isGroupExpanded(groupName) {
+            const group = document.querySelector(`[data-group="${groupName}"]`);
+            return group && !group.classList.contains('collapsed');
+        }
+        
+        function drawConnections() {
+            const svg = document.getElementById('connectionsSvg');
+            const container = document.querySelector('.diagram-container');
+            
+            // Clear existing connections
+            while (svg.childNodes.length > 4) { // Keep the defs
+                svg.removeChild(svg.lastChild);
+            }
+            
+            // Set SVG dimensions to match container
+            const containerRect = container.getBoundingClientRect();
+            svg.setAttribute('width', containerRect.width);
+            svg.setAttribute('height', containerRect.height);
+            
+            // Helper function to get component center
+            function getComponentCenter(selector) {
+                const element = document.querySelector(`[data-component="${selector}"]`);
+                if (!element) return null;
+                
+                const rect = element.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                const left = rect.left - containerRect.left;
+                const right = rect.right - containerRect.left;
+                const top = rect.top - containerRect.top;
+                const bottom = rect.bottom - containerRect.top;
+                const centerX = left + rect.width / 2;
+                const centerY = top + rect.height / 2;
+                
+                return {
+                    left, right, top, bottom, centerX, centerY,
+                    rightCenter: { x: right, y: centerY },
+                    leftCenter: { x: left, y: centerY }
+                };
+            }
+            
+            // Create line between two points
+            function createLine(fromPoint, toPoint, className, marker = '') {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', fromPoint.x);
+                line.setAttribute('y1', fromPoint.y);
+                line.setAttribute('x2', toPoint.x);
+                line.setAttribute('y2', toPoint.y);
+                line.setAttribute('class', `connection-line ${className}`);
+                if (marker) {
+                    line.setAttribute('marker-end', `url(#${marker})`);
+                }
+                svg.appendChild(line);
+            }
+            
+            // Client to Node 2 (if both expanded)
+            if (isGroupExpanded('client') && isGroupExpanded('nodes')) {
+                const client = getComponentCenter('client');
+                const node2 = getComponentCenter('node2');
+                
+                if (client && node2) {
+                    createLine(client.rightCenter, node2.leftCenter, 'connection-external', 'arrowhead-red');
+                }
+            }
+            
+            // Node 2 to Service (if both expanded)
+            if (isGroupExpanded('nodes') && isGroupExpanded('service')) {
+                const node2 = getComponentCenter('node2');
+                const service = getComponentCenter('service');
+                
+                if (node2 && service) {
+                    createLine(node2.rightCenter, service.leftCenter, 'connection-internal', 'arrowhead-blue');
+                }
+            }
+            
+            // Service to all Pods (if both expanded)
+            if (isGroupExpanded('service') && isGroupExpanded('pods')) {
+                const service = getComponentCenter('service');
+                const pod1 = getComponentCenter('pod1');
+                const pod2 = getComponentCenter('pod2');
+                const pod3 = getComponentCenter('pod3');
+                
+                if (service && pod1) {
+                    createLine(service.rightCenter, pod1.leftCenter, 'connection-loadbalance', 'arrowhead-purple');
+                }
+                if (service && pod2) {
+                    createLine(service.rightCenter, pod2.leftCenter, 'connection-loadbalance', 'arrowhead-purple');
+                }
+                if (service && pod3) {
+                    createLine(service.rightCenter, pod3.leftCenter, 'connection-loadbalance', 'arrowhead-purple');
+                }
+            }
+        }
+        
+        // Interactive hover effects
+        document.querySelectorAll('.component').forEach(component => {
+            component.addEventListener('mouseenter', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.borderColor = 'var(--rh-red)';
+                }
+            });
+            
+            component.addEventListener('mouseleave', function() {
+                if (!this.classList.contains('active')) {
+                    this.style.borderColor = '';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
