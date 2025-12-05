@@ -139,6 +139,15 @@
             line-height: 1.1;
             color: var(--rh-red);
             margin-bottom: 16px;
+            /* More subtle shadow - half the offset */
+            text-shadow: 
+                0 1.5px 0 #000000,
+                0 3px 0 #000000,
+                0 4.5px 0 #000000,
+                0 6px 0 #000000,
+                0 7.5px 2.5px rgba(0,0,0,0.4),
+                0 10px 5px rgba(0,0,0,0.3),
+                0 12.5px 7.5px rgba(0,0,0,0.2);
         }
         
         .slide-subtitle {
@@ -270,18 +279,22 @@
             top: 0;
             left: 50%;
             transform: translateX(-50%);
+            transform-origin: center center;
             animation-delay: 0.6s, 0s;
+            animation: fadeInScale 1.2s ease-out both, counterRotateTop 30s linear infinite;
         }
         
         .persona:nth-child(3) { 
             bottom: 0;
             left: 5%;
+            transform-origin: center center;
             animation-delay: 0.8s, 0s;
         }
         
         .persona:nth-child(4) { 
             bottom: 0;
             right: 5%;
+            transform-origin: center center;
             animation-delay: 1.0s, 0s;
         }
         
@@ -302,6 +315,15 @@
             }
             to {
                 transform: rotate(-360deg);
+            }
+        }
+        
+        @keyframes counterRotateTop {
+            from {
+                transform: translateX(-50%) rotate(0deg);
+            }
+            to {
+                transform: translateX(-50%) rotate(-360deg);
             }
         }
         
@@ -1539,12 +1561,23 @@
             font-weight: 900;
             line-height: 1.1;
             margin-bottom: 24px;
-            background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 50%, var(--layer-infra) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--rh-red);  /* Bright Red Hat red #EE0000 */
             letter-spacing: -0.03em;
             animation: fadeInUp 1s ease-out 0.3s both;
+            /* Dramatic 3D effect with strong contrast */
+            text-shadow: 
+                2px 2px 0 #000000,
+                4px 4px 0 #000000,
+                6px 6px 0 #000000,
+                8px 8px 0 #000000,
+                10px 10px 0 #000000,
+                12px 12px 0 #000000,
+                14px 14px 0 #000000,
+                16px 16px 0 #000000,
+                18px 18px 0 #000000,
+                20px 20px 10px rgba(0,0,0,0.5),
+                25px 25px 20px rgba(0,0,0,0.4),
+                30px 30px 30px rgba(0,0,0,0.3);
         }
         
         .title-slide-subtitle {
