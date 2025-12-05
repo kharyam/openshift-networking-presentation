@@ -1,5 +1,7 @@
 # 🌐 OpenShift Networking Presentation
 
+**[🌐 View Live Presentation](https://kharyam.github.io/openshift-networking-presentation/)**
+
 A comprehensive, interactive presentation covering OpenShift networking concepts with 20 slides, 12 interactive diagrams, and advanced presenter controls.
 
 ![OpenShift Networking](https://img.shields.io/badge/OpenShift-Networking-EE0000?style=flat&logo=redhat)
