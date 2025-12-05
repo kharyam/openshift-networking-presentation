@@ -137,11 +137,26 @@
             font-weight: 900;
             letter-spacing: -0.02em;
             line-height: 1.1;
+            /* Fallback for browsers that don't support background-clip: text */
+            color: var(--rh-red);
+            /* Gradient for browsers that support it */
             background: linear-gradient(135deg, var(--rh-red) 0%, var(--rh-red-light) 100%);
             -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            -moz-background-clip: text;
             background-clip: text;
+            -webkit-text-fill-color: transparent;
+            -moz-text-fill-color: transparent;
+            /* Support check - if background-clip isn't supported, color shows */
             margin-bottom: 16px;
+        }
+        
+        /* Firefox-specific fix */
+        @-moz-document url-prefix() {
+            .slide-title {
+                color: var(--rh-red);
+                background: none;
+                -moz-text-fill-color: unset;
+            }
         }
         
         .slide-subtitle {
