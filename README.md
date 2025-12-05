@@ -364,7 +364,6 @@ MIT License - see LICENSE file for details
 For questions, suggestions, or issues:
 - Open a GitHub issue
 - Submit a pull request
-- Contact: [your-email@example.com]
 
 ---
 
