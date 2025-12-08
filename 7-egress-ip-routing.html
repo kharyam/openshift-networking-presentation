@@ -448,9 +448,9 @@
         </div>
         
         <div class="controls">
-            <button class="btn active" data-flow="none">Show All</button>
-            <button class="btn" data-flow="dev">Highlight Default Flow</button>
+            <button class="btn active" data-flow="dev">Highlight Default Flow</button>
             <button class="btn" data-flow="prod">Highlight Egress-Enabled Flow</button>
+            <button class="btn" data-flow="none">Show All</button>
         </div>
         
         <div class="diagram-container">
@@ -541,7 +541,7 @@
     </div>
     
     <script>
-        let currentFlow = 'none';
+        let currentFlow = 'dev';
         
         document.addEventListener('DOMContentLoaded', function() {
             setupFlowControls();

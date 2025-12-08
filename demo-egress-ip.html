@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Egress IP Demo - Red Hat OpenShift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --rh-red: #EE0000;
+            --rh-red-dark: #A30000;
+            --rh-red-light: #FF4444;
+            --rh-black: #000000;
+            --rh-white: #FFFFFF;
+            --rh-gray-90: #151515;
+            --rh-gray-80: #1F1F1F;
+            --rh-gray-70: #3C3F42;
+            --rh-gray-50: #6A6E73;
+            --rh-gray-30: #B8BBBE;
+            --rh-gray-20: #D2D3D5;
+            
+            --terminal-bg: #0C0C0C;
+            --terminal-text: #00FF00;
+            --terminal-comment: #808080;
+            --terminal-output: #CCCCCC;
+            --terminal-error: #FF4444;
+            
+            --bg-main: #0F0F0F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8BBBE;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Red Hat Display', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            color: var(--rh-red);
+            text-shadow: 
+                0 1.5px 0 #000000,
+                0 3px 0 #000000,
+                0 4.5px 0 #000000,
+                0 6px 0 #000000,
+                0 7.5px 2.5px rgba(0,0,0,0.4),
+                0 10px 5px rgba(0,0,0,0.3),
+                0 12.5px 7.5px rgba(0,0,0,0.2);
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .demo-layout {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        /* Terminal */
+        .terminal-container {
+            background: var(--terminal-bg);
+            border-radius: 12px;
+            border: 2px solid var(--rh-gray-70);
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+        
+        .terminal-header {
+            background: var(--rh-gray-80);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--rh-gray-70);
+        }
+        
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .terminal-dot.red { background: #FF5F56; }
+        .terminal-dot.yellow { background: #FFBD2E; }
+        .terminal-dot.green { background: #27C93F; }
+        
+        .terminal-title {
+            margin-left: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-family: 'Space Mono', monospace;
+        }
+        
+        .terminal-body {
+            padding: 20px;
+            min-height: 500px;
+            max-height: 600px;
+            overflow-y: auto;
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            text-align: left;
+            display: block;
+            vertical-align: top;
+        }
+        
+        .terminal-line {
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            text-align: left;
+            display: block;
+        }
+        
+        .prompt {
+            color: var(--terminal-text);
+            font-weight: 700;
+        }
+        
+        .command {
+            color: var(--terminal-text);
+        }
+        
+        .output {
+            color: var(--terminal-output);
+            margin-left: 0;
+        }
+        
+        .comment {
+            color: var(--terminal-comment);
+            font-style: italic;
+        }
+        
+        .error {
+            color: var(--terminal-error);
+        }
+        
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background: var(--terminal-text);
+            animation: blink 1s step-end infinite;
+            margin-left: 2px;
+            vertical-align: baseline;
+            position: relative;
+            top: 2px;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        /* Explanation Panel */
+        .explanation-panel {
+            background: var(--rh-gray-90);
+            border-radius: 12px;
+            padding: 30px;
+            border: 2px solid var(--rh-gray-70);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .explanation-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--rh-gray-70);
+        }
+        
+        .explanation-icon {
+            font-size: 32px;
+        }
+        
+        .explanation-header h3 {
+            font-size: 20px;
+            color: var(--rh-red);
+            font-weight: 700;
+        }
+        
+        .step-indicator {
+            background: var(--rh-gray-80);
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .step-indicator .current-step {
+            color: var(--rh-red);
+            font-weight: 700;
+            font-size: 24px;
+        }
+        
+        .explanation-text {
+            flex: 1;
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+        
+        .explanation-text p {
+            margin-bottom: 12px;
+        }
+        
+        .explanation-text strong {
+            color: var(--rh-red);
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 14px 28px;
+            border-radius: 8px;
+            border: 2px solid;
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(238, 0, 0, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-primary {
+            background: var(--rh-red);
+            border-color: var(--rh-red);
+            color: var(--rh-white);
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: var(--rh-red-light);
+            border-color: var(--rh-red-light);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            border-color: var(--rh-gray-50);
+            color: var(--text-primary);
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            border-color: var(--rh-red);
+            color: var(--rh-red);
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .demo-layout {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Egress IP Demo</h1>
+            <div class="subtitle">Stable External Source IP Configuration</div>
+        </div>
+        
+        <div class="demo-layout">
+            <!-- Terminal -->
+            <div class="terminal-container">
+                <div class="terminal-header">
+                    <div class="terminal-dot red"></div>
+                    <div class="terminal-dot yellow"></div>
+                    <div class="terminal-dot green"></div>
+                    <div class="terminal-title">demo@openshift ~ %</div>
+                </div>
+                <div class="terminal-body" id="terminal">
+<div class="terminal-line"><span class="prompt">$ </span><span class="cursor"></span></div>
+                </div>
+            </div>
+            
+            <!-- Explanation Panel -->
+            <div class="explanation-panel">
+                <div class="explanation-header">
+                    <div class="explanation-icon">📝</div>
+                    <h3>What's Happening</h3>
+                </div>
+                
+                <div class="step-indicator">
+                    Step <span class="current-step" id="stepNumber">1</span> of <span id="totalSteps">6</span>
+                </div>
+                
+                <div class="explanation-text" id="explanationText">
+                    Click "Next Step" to begin the demo. We'll demonstrate how Egress IP provides a stable external source IP for pod traffic.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn btn-secondary" id="prevBtn" onclick="previousStep()" disabled>
+                ⏮ Previous
+            </button>
+            <button class="btn btn-primary" id="nextBtn" onclick="nextStep()">
+                Next Step ▶
+            </button>
+            <button class="btn btn-secondary" id="restartBtn" onclick="restartDemo()">
+                🔄 Restart Demo
+            </button>
+        </div>
+    </div>
+    
+    <script>
+        const demo = {
+            steps: [
+                {
+                    command: "oc get pods -n demo -o wide",
+                    output: `NAME      READY   STATUS    RESTARTS   AGE   IP            NODE
+pod-a     1/1     Running   0          5m    10.128.2.15   worker-1`,
+                    explanation: "First, we check our pod and which node it's running on. The pod has an internal IP <strong>10.128.2.15</strong> and is on <strong>worker-1</strong>."
+                },
+                {
+                    command: "oc exec -it pod-a -n demo -- curl -s ifconfig.me",
+                    output: "10.0.1.11",
+                    explanation: "We check what external systems see as our source IP by using <a href='https://ifconfig.me' target='_blank' style='color: var(--rh-red); text-decoration: underline;'>ifconfig.me</a> (a service that returns your public IP). By default, traffic is <strong>SNAT'd to the node IP</strong> (10.0.1.11 - the IP of worker-1). If the pod moves to a different node, this IP changes."
+                },
+                {
+                    command: "cat egressip.yaml",
+                    output: `apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: demo-egress
+spec:
+  egressIPs:
+  - 192.168.1.100
+  namespaceSelector:
+    matchLabels:
+      env: demo`,
+                    explanation: "Let's examine our EgressIP configuration. This assigns a <strong>stable IP (192.168.1.100)</strong> to all pods in namespaces with label <strong>env=demo</strong>. This IP stays consistent regardless of which node runs the pod."
+                },
+                {
+                    command: "oc label namespace demo env=demo",
+                    output: "namespace/demo labeled",
+                    explanation: "We label our namespace so the EgressIP policy can select it. This tells OpenShift that pods in this namespace should use the egress IP."
+                },
+                {
+                    command: "oc apply -f egressip.yaml",
+                    output: "egressip.k8s.ovn.org/demo-egress created",
+                    explanation: "Apply the EgressIP configuration. OpenShift will now <strong>assign 192.168.1.100 to an available node</strong> and route egress traffic from our pods through it."
+                },
+                {
+                    command: "oc exec -it pod-a -n demo -- curl -s ifconfig.me",
+                    output: "192.168.1.100",
+                    explanation: "Now when we check the external source IP, we see <strong>192.168.1.100</strong> - our EgressIP! External systems now see a stable, predictable IP regardless of pod location. Perfect for firewall rules! 🎯"
+                }
+            ],
+            currentStep: 0
+        };
+        
+        let isTyping = false;
+        
+        function updateUI() {
+            const displayStep = Math.min(demo.currentStep + 1, demo.steps.length);
+            document.getElementById('stepNumber').textContent = displayStep;
+            document.getElementById('totalSteps').textContent = demo.steps.length;
+            document.getElementById('prevBtn').disabled = demo.currentStep === 0 || isTyping;
+            document.getElementById('nextBtn').disabled = demo.currentStep >= demo.steps.length || isTyping;
+            
+            if (demo.currentStep >= demo.steps.length) {
+                document.getElementById('nextBtn').textContent = '✓ Demo Complete';
+            } else {
+                document.getElementById('nextBtn').textContent = 'Next Step ▶';
+            }
+        }
+        
+        async function nextStep() {
+            if (demo.currentStep >= demo.steps.length || isTyping) return;
+            
+            isTyping = true;
+            updateUI();
+            
+            const step = demo.steps[demo.currentStep];
+            const terminal = document.getElementById('terminal');
+            const explanation = document.getElementById('explanationText');
+            
+            // Update explanation
+            explanation.innerHTML = step.explanation;
+            
+            // Find the existing cursor line and add command span there
+            const cursorLine = terminal.querySelector('.terminal-line:last-child');
+            const cursor = cursorLine.querySelector('.cursor');
+            
+            // Insert command span before cursor
+            const commandSpan = document.createElement('span');
+            commandSpan.className = 'command';
+            commandSpan.id = 'typingCommand';
+            cursor.parentNode.insertBefore(commandSpan, cursor);
+            
+            // Scroll to show typing
+            terminal.scrollTop = terminal.scrollHeight;
+            
+            // Type command
+            await typeText(step.command, commandSpan);
+            
+            // Remove cursor from this line
+            if (cursor) cursor.remove();
+            
+            // Wait before showing output
+            // 1 second for oc commands, 300ms for cat
+            let waitTime = 300; // default for cat
+            if (step.command.startsWith('oc ')) {
+                waitTime = 1000; // 1 second for oc commands
+            }
+            await sleep(waitTime);
+            
+            // Show output
+            const outputLines = step.output.split('\n');
+            for (const line of outputLines) {
+                const outputLine = document.createElement('div');
+                outputLine.className = 'terminal-line output' + (step.outputClass ? ' ' + step.outputClass : '');
+                outputLine.textContent = line;
+                terminal.appendChild(outputLine);
+            }
+            
+            // Add empty line
+            const emptyLine = document.createElement('div');
+            emptyLine.className = 'terminal-line';
+            emptyLine.innerHTML = '&nbsp;';
+            terminal.appendChild(emptyLine);
+            
+            // Add new prompt with cursor for next command
+            const newPromptLine = document.createElement('div');
+            newPromptLine.className = 'terminal-line';
+            newPromptLine.innerHTML = '<span class="prompt">$ </span><span class="cursor"></span>';
+            terminal.appendChild(newPromptLine);
+            
+            // Scroll to bottom
+            terminal.scrollTop = terminal.scrollHeight;
+            
+            demo.currentStep++;
+            isTyping = false;
+            updateUI();
+        }
+        
+        function previousStep() {
+            if (demo.currentStep <= 0 || isTyping) return;
+            
+            demo.currentStep--;
+            
+            // Clear terminal and replay up to current step
+            const terminal = document.getElementById('terminal');
+            terminal.innerHTML = '<div class="terminal-line"><span class="prompt">$ </span><span class="cursor"></span></div>';
+            
+            // Update explanation to previous step
+            if (demo.currentStep > 0) {
+                const step = demo.steps[demo.currentStep - 1];
+                document.getElementById('explanationText').innerHTML = step.explanation;
+            } else {
+                document.getElementById('explanationText').innerHTML = "Click \"Next Step\" to begin the demo. We'll demonstrate how Egress IP provides a stable external source IP for pod traffic.";
+            }
+            
+            // Replay all steps instantly up to current point
+            replaySteps();
+            
+            updateUI();
+        }
+        
+        function replaySteps() {
+            const terminal = document.getElementById('terminal');
+            terminal.innerHTML = '';
+            
+            for (let i = 0; i < demo.currentStep; i++) {
+                const step = demo.steps[i];
+                
+                // Add prompt and command
+                const promptLine = document.createElement('div');
+                promptLine.className = 'terminal-line';
+                promptLine.innerHTML = `<span class="prompt">$ </span><span class="command">${step.command}</span>`;
+                terminal.appendChild(promptLine);
+                
+                // Add output
+                const outputLines = step.output.split('\n');
+                for (const line of outputLines) {
+                    const outputLine = document.createElement('div');
+                    outputLine.className = 'terminal-line output' + (step.outputClass ? ' ' + step.outputClass : '');
+                    outputLine.textContent = line;
+                    terminal.appendChild(outputLine);
+                }
+                
+                // Add empty line
+                const emptyLine = document.createElement('div');
+                emptyLine.className = 'terminal-line';
+                emptyLine.innerHTML = '&nbsp;';
+                terminal.appendChild(emptyLine);
+            }
+            
+            // Add prompt with cursor
+            const promptLine = document.createElement('div');
+            promptLine.className = 'terminal-line';
+            promptLine.innerHTML = '<span class="prompt">$ </span><span class="cursor"></span>';
+            terminal.appendChild(promptLine);
+            
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+        
+        function restartDemo() {
+            if (isTyping) return;
+            
+            demo.currentStep = 0;
+            const terminal = document.getElementById('terminal');
+            terminal.innerHTML = '<div class="terminal-line"><span class="prompt">$ </span><span class="cursor"></span></div>';
+            document.getElementById('explanationText').innerHTML = "Click \"Next Step\" to begin the demo. We'll demonstrate how Egress IP provides a stable external source IP for pod traffic.";
+            updateUI();
+        }
+        
+        async function typeText(text, element) {
+            for (let i = 0; i < text.length; i++) {
+                element.textContent += text[i];
+                await sleep(30); // Fast typing speed
+            }
+        }
+        
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        // Initialize
+        updateUI();
+    </script>
+</body>
+</html>
