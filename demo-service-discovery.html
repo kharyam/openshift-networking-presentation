@@ -336,7 +336,7 @@
                 </div>
                 
                 <div class="step-indicator">
-                    Step <span class="current-step" id="stepNumber">1</span> of <span id="totalSteps">7</span>
+                    Step <span class="current-step" id="stepNumber">1</span> of <span id="totalSteps">9</span>
                 </div>
                 
                 <div class="explanation-text" id="explanationText">
@@ -403,7 +403,17 @@ Address 1: 172.30.45.180 web-app.demo.svc.cluster.local`,
                 {
                     command: "oc exec -it test-pod -n demo -- wget -qO- web-app",
                     output: "Request served by: web-app-7d4f8c9b6d-2xm9p",
-                    explanation: "When we connect to the service, it <strong>automatically load balances</strong> our request to one of the 3 backend pods. Run this multiple times and you'll hit different pods - that's Kubernetes load balancing in action! 🎯"
+                    explanation: "When we connect to the service, it <strong>automatically load balances</strong> our request to one of the 3 backend pods. Notice which pod served this request."
+                },
+                {
+                    command: "oc exec -it test-pod -n demo -- wget -qO- web-app",
+                    output: "Request served by: web-app-7d4f8c9b6d-7kp4q",
+                    explanation: "Running the same command again, we get a <strong>different pod (7kp4q)</strong>! The service is distributing requests across all healthy pods."
+                },
+                {
+                    command: "oc exec -it test-pod -n demo -- wget -qO- web-app",
+                    output: "Request served by: web-app-7d4f8c9b6d-n5w8r",
+                    explanation: "Third request, third pod (n5w8r)! This is Kubernetes <strong>load balancing in action</strong> - distributing traffic evenly across all 3 replicas. No configuration needed, it just works! 🎯"
                 }
             ],
             currentStep: 0
