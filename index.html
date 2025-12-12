@@ -5645,16 +5645,26 @@
         }
         
         function nextSlide() {
-            if (currentSlide < totalSlides - 1) {
-                currentSlide++;
+            let nextSlideNum = currentSlide + 1;
+            // Skip over any slides marked as skipped
+            while (nextSlideNum < totalSlides && window.skippedSlides && window.skippedSlides.has(nextSlideNum)) {
+                nextSlideNum++;
+            }
+            if (nextSlideNum < totalSlides) {
+                currentSlide = nextSlideNum;
                 updateSlide();
                 updateProgress();
             }
         }
         
         function prevSlide() {
-            if (currentSlide > 0) {
-                currentSlide--;
+            let prevSlideNum = currentSlide - 1;
+            // Skip over any slides marked as skipped
+            while (prevSlideNum >= 0 && window.skippedSlides && window.skippedSlides.has(prevSlideNum)) {
+                prevSlideNum--;
+            }
+            if (prevSlideNum >= 0) {
+                currentSlide = prevSlideNum;
                 updateSlide();
                 updateProgress();
             }
